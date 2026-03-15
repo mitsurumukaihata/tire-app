@@ -1112,16 +1112,20 @@ async function submitEntry() {
   if (btn) { btn.disabled = true; btn.textContent = '送信中…'; }
 
   try {
+    let result;
     if (state.isMove) {
-      await createRecord('移動出庫', state.moveDir.from);
-      await createRecord('移動入庫', state.moveDir.to);
+      result = await createRecord('移動出庫', state.moveDir.from);
+      if (result.object === 'error') throw new Error(result.message + ' (code: ' + result.code + ')');
+      result = await createRecord('移動入庫', state.moveDir.to);
+      if (result.object === 'error') throw new Error(result.message + ' (code: ' + result.code + ')');
     } else {
-      await createRecord(state.kubun, state.warehouse);
+      result = await createRecord(state.kubun, state.warehouse);
+      if (result.object === 'error') throw new Error(result.message + ' (code: ' + result.code + ')');
     }
     goStep(8);
   } catch(e) {
     const errEl = document.getElementById('confirm-error');
-    if (errEl) errEl.innerHTML = `<div class="error-box">送信に失敗しました。トークンや接続を確認してください。<br>${e.message}</div>`;
+    if (errEl) errEl.innerHTML = `<div class="error-box">送信に失敗しました。<br><small>${e.message}</small></div>`;
     if (btn) { btn.disabled = false; btn.textContent = 'この内容で送信する'; }
   }
 }
