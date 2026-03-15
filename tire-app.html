@@ -1068,7 +1068,7 @@ function newEntry() { resetState(); renderEntry(); }
 // ─── Notion API ──────────────────────────────────────────────────────────────
 
 async function notionAPI(method, path, body) {
-  const res = await fetch(`https://api.notion.com/v1${path}`, {
+  const res = await fetch(`https://notion-proxy.33322666666mm.workers.dev/notion-proxy${path}`, {
     method,
     headers: {
       'Authorization': `Bearer ${TOKEN}`,
