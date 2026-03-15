@@ -444,15 +444,12 @@ body {
   <div class="gate-sub">
     Notionインテグレーショントークンを入力して<br>アプリを起動してください。
   </div>
-  <div class="gate-label">インテグレーションシークレット</div>
-  <input class="gate-input" id="token-input" type="password" placeholder="ntn_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
-  <div class="gate-label" style="margin-top:8px;">社員名（記録に使用）</div>
+  <div class="gate-label">社員名を入力してください</div>
   <input class="gate-input" id="name-input" type="text" placeholder="例：向畑 充">
   <button class="gate-btn" onclick="startApp()">起動する</button>
   <div class="gate-note">
-    ※ トークンはこのデバイスのみに保存され、外部に送信されません。<br>
-    ※ ブラウザを閉じても保持されます。<br>
-    ※ トークンを変更するにはブラウザのキャッシュを削除してください。
+    ※ 入力した名前は記録に使用されます。<br>
+    ※ ブラウザを閉じても保持されます。
   </div>
   <div id="gate-error" class="error-box" style="display:none;margin-top:12px;"></div>
 </div>
@@ -601,12 +598,9 @@ function resetState() {
 // ─── Token Gate ──────────────────────────────────────────────────────────────
 
 function startApp() {
-  const t = document.getElementById('token-input').value.trim();
   const n = document.getElementById('name-input').value.trim();
-  if (!t || !n) { showGateError('トークンと社員名を入力してください'); return; }
-  if (!t.startsWith('ntn_') && !t.startsWith('secret_')) { showGateError('トークンの形式が正しくありません（ntn_ または secret_ で始まる必要があります）'); return; }
-  TOKEN = t; USER_NAME = n;
-  localStorage.setItem('tire_token', t);
+  if (!n) { showGateError('社員名を入力してください'); return; }
+  USER_NAME = n;
   localStorage.setItem('tire_name', n);
   launchApp();
 }
@@ -625,11 +619,8 @@ function launchApp() {
 }
 
 function logout() {
-  if (confirm('トークンを削除してログアウトしますか？')) {
-    localStorage.removeItem('tire_token');
-    localStorage.removeItem('tire_name');
-    location.reload();
-  }
+  localStorage.removeItem('tire_name');
+  location.reload();
 }
 
 // ─── Tab ─────────────────────────────────────────────────────────────────────
@@ -1071,7 +1062,6 @@ async function notionAPI(method, path, body) {
   const res = await fetch(`https://notion-proxy.33322666666mm.workers.dev${path}`, {
     method,
     headers: {
-      'Authorization': `Bearer ${TOKEN}`,
       'Content-Type': 'application/json',
       'Notion-Version': '2022-06-28'
     },
@@ -1324,12 +1314,9 @@ function renderStockResult(size, catKey, records) {
 // ─── 初期化 ──────────────────────────────────────────────────────────────────
 
 window.onload = () => {
-  const t = localStorage.getItem('tire_token');
   const n = localStorage.getItem('tire_name');
-  if (t && n) {
-    TOKEN = t; USER_NAME = n;
-    document.getElementById('token-input').value = t;
-    document.getElementById('name-input').value = n;
+  if (n) {
+    USER_NAME = n;
     launchApp();
   }
 };
