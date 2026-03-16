@@ -525,13 +525,7 @@ function getMaker(pattern) {
 }
 
 function makerLogoImg(pattern, size=32) {
-  const maker = getMaker(pattern);
-  const url = MAKER_LOGO[maker];
-  if (!url) return '';
-  return `<img src="${url}" alt="${maker}" 
-    style="height:${size}px;max-width:${size*5}px;object-fit:contain;vertical-align:middle;
-    background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:6px;
-    border:1px solid rgba(255,255,255,0.2);">`;
+  return ''; // ロゴは現在非表示
 }
 
 // ─── DB マスターデータ ───────────────────────────────────────────────────────
@@ -1175,50 +1169,20 @@ async function createRecord(kubun, warehouse) {
     '区分': { select: { name: kubun } },
     '処理タイプ': { select: { name: KUBUN_TO_SHORIYTYPE[kubun] || '出庫' } },
     '年月': { rich_text: [{ text: { content: getNow() } }] },
-    // メモはcreateRecord末尾で型判定して設定
+
     '作成者': { select: { name: (USER_NAME || '').replace(/ /g, '　') } },
   };
   props[wField] = { select: { name: warehouse } };
   if (state.dest && (state.kubun === '出庫' || state.kubun === '準備')) {
     props['出庫先'] = { rich_text: [{ text: { content: state.dest } }] };
   }
-  // メモはDBによってselect/rich_text型が異なる、作成者はread-onlyの場合がある
-  // まず全フィールドで試みる
-  const propsWithRichMemo = {...props};
-  delete propsWithRichMemo['メモ'];
-  if (state.memo) propsWithRichMemo['メモ'] = { rich_text: [{ text: { content: state.memo } }] };
+  // メモはrich_text型（全DB共通）
+  props['メモ'] = { rich_text: state.memo ? [{ text: { content: state.memo } }] : [] };
 
-  try {
-    return await notionAPI('POST', '/pages', {
-      parent: { database_id: db.id },
-      properties: propsWithRichMemo
-    });
-  } catch(e1) {
-    // rich_textでメモが失敗した場合はselectで試みる
-    if (e1.message.includes('メモ') || e1.message.includes('memo')) {
-      const propsWithSelectMemo = {...props};
-      if (state.memo) propsWithSelectMemo['メモ'] = { select: { name: state.memo } };
-      else delete propsWithSelectMemo['メモ'];
-      try {
-        return await notionAPI('POST', '/pages', {
-          parent: { database_id: db.id },
-          properties: propsWithSelectMemo
-        });
-      } catch(e2) {
-        throw e2;
-      }
-    }
-    // 作成者がread-onlyの場合は除いて再送
-    if (e1.message.includes('作成者') || e1.message.includes('read-only') || e1.message.includes('validation')) {
-      const propsNoSakusha = {...propsWithRichMemo};
-      delete propsNoSakusha['作成者'];
-      return await notionAPI('POST', '/pages', {
-        parent: { database_id: db.id },
-        properties: propsNoSakusha
-      });
-    }
-    throw e1;
-  }
+  return await notionAPI('POST', '/pages', {
+    parent: { database_id: db.id },
+    properties: props
+  });
 }
 
 async function submitEntry() {
