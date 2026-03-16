@@ -1175,28 +1175,49 @@ async function createRecord(kubun, warehouse) {
     '区分': { select: { name: kubun } },
     '処理タイプ': { select: { name: KUBUN_TO_SHORIYTYPE[kubun] || '出庫' } },
     '年月': { rich_text: [{ text: { content: getNow() } }] },
-    'メモ': { select: state.memo ? { name: state.memo } : null },
+    // メモはcreateRecord末尾で型判定して設定
     '作成者': { select: { name: (USER_NAME || '').replace(/ /g, '　') } },
   };
   props[wField] = { select: { name: warehouse } };
   if (state.dest && (state.kubun === '出庫' || state.kubun === '準備')) {
     props['出庫先'] = { rich_text: [{ text: { content: state.dest } }] };
   }
-  // 作成者selectを試みる、失敗時は除いて再送
+  // メモはDBによってselect/rich_text型が異なる、作成者はread-onlyの場合がある
+  // まず全フィールドで試みる
+  const propsWithRichMemo = {...props};
+  delete propsWithRichMemo['メモ'];
+  if (state.memo) propsWithRichMemo['メモ'] = { rich_text: [{ text: { content: state.memo } }] };
+
   try {
     return await notionAPI('POST', '/pages', {
       parent: { database_id: db.id },
-      properties: props
+      properties: propsWithRichMemo
     });
-  } catch(e) {
-    if (e.message.includes('作成者') || e.message.includes('read-only') || e.message.includes('validation')) {
-      delete props['作成者'];
+  } catch(e1) {
+    // rich_textでメモが失敗した場合はselectで試みる
+    if (e1.message.includes('メモ') || e1.message.includes('memo')) {
+      const propsWithSelectMemo = {...props};
+      if (state.memo) propsWithSelectMemo['メモ'] = { select: { name: state.memo } };
+      else delete propsWithSelectMemo['メモ'];
+      try {
+        return await notionAPI('POST', '/pages', {
+          parent: { database_id: db.id },
+          properties: propsWithSelectMemo
+        });
+      } catch(e2) {
+        throw e2;
+      }
+    }
+    // 作成者がread-onlyの場合は除いて再送
+    if (e1.message.includes('作成者') || e1.message.includes('read-only') || e1.message.includes('validation')) {
+      const propsNoSakusha = {...propsWithRichMemo};
+      delete propsNoSakusha['作成者'];
       return await notionAPI('POST', '/pages', {
         parent: { database_id: db.id },
-        properties: props
+        properties: propsNoSakusha
       });
     }
-    throw e;
+    throw e1;
   }
 }
 
@@ -1379,8 +1400,15 @@ function renderStockResult(size, catKey, records) {
     ${WAREHOUSES.map(w => `<div style="text-align:center;min-width:48px;"><div style="font-size:10px;color:var(--muted);">${w.replace('倉庫','')}</div></div>`).join('')}
   </div>`;
 
-  // 在庫あり順にソート（合計在庫が多い順）
+  // メーカー順にソート: TOYO→BRIDGESTONE→DUNLOP→MICHELIN→PIRELLI
+  const MAKER_ORDER = ['TOYO','BRIDGESTONE','DUNLOP','MICHELIN','PIRELLI'];
   const sortedPatterns = [...db.patterns].sort((a, b) => {
+    const makerA = getMaker(a);
+    const makerB = getMaker(b);
+    const orderA = MAKER_ORDER.indexOf(makerA);
+    const orderB = MAKER_ORDER.indexOf(makerB);
+    if (orderA !== orderB) return orderA - orderB;
+    // 同メーカー内は在庫あり順
     const sumA = WAREHOUSES.reduce((s, w) => s + (stock[a]?.[w] || 0), 0);
     const sumB = WAREHOUSES.reduce((s, w) => s + (stock[b]?.[w] || 0), 0);
     return sumB - sumA;
