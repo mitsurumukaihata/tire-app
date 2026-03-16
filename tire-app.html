@@ -1059,12 +1059,9 @@ function newEntry() { resetState(); renderEntry(); }
 // ─── Notion API ──────────────────────────────────────────────────────────────
 
 async function notionAPI(method, path, body) {
-  const res = await fetch(`https://notion-proxy.33322666666mm.workers.dev${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28'
-    },
+  const res = await fetch('https://notion-proxy.33322666666mm.workers.dev' + path, {
+    method: method,
+    headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined
   });
   const data = await res.json();
