@@ -3,9 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
 <title>タイヤ入出庫 | Tire Manager f.o.o</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap');
@@ -103,16 +100,6 @@ body {
   margin-top: 4px;
 }
 .gate-note { font-size: 11px; color: var(--muted); margin-top: 16px; line-height: 1.6; }
-.gate-staff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
-.gate-staff-btn {
-  background: var(--s2); border: 1.5px solid var(--border);
-  border-radius: 10px; padding: 14px 10px; text-align: center;
-  cursor: pointer; font-size: 14px; font-weight: 700; color: var(--text);
-  transition: all 0.15s;
-}
-.gate-staff-btn:active { transform: scale(0.97); }
-.gate-staff-btn.selected { border-color: var(--accent); background: rgba(255,92,43,0.1); color: var(--accent); }
-.gate-start-label { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
 
 /* ── App Shell ── */
 #app { display: none; flex-direction: column; min-height: 100vh; }
@@ -170,10 +157,9 @@ body {
 }
 .btn-primary:disabled { opacity: 0.4; cursor: default; }
 .btn-secondary {
-  width: 100%; background: transparent; border: 1.5px solid var(--border2);
-  border-radius: 10px; padding: 12px; color: var(--text); font-size: 14px;
+  width: 100%; background: transparent; border: 1px solid var(--border);
+  border-radius: 10px; padding: 11px; color: var(--muted); font-size: 13px;
   font-family: 'Noto Sans JP', sans-serif; cursor: pointer; margin-top: 6px;
-  font-weight: 500;
 }
 .btn-danger {
   width: 100%; background: transparent; border: 1px solid var(--red);
@@ -456,24 +442,14 @@ body {
   <div class="gate-logo">Tire Manager f.o.o</div>
   <div class="gate-title">タイヤ<span>入出庫</span></div>
   <div class="gate-sub">
-    社員名を選択してアプリを起動してください。
+    Notionインテグレーショントークンを入力して<br>アプリを起動してください。
   </div>
-  <div class="gate-staff-grid" id="staff-grid">
-    <div class="gate-staff-btn" onclick="selectStaff('向畑 充')">向畑 充</div>
-    <div class="gate-staff-btn" onclick="selectStaff('矢島 明和')">矢島 明和</div>
-    <div class="gate-staff-btn" onclick="selectStaff('大田 健')">大田 健</div>
-    <div class="gate-staff-btn" onclick="selectStaff('中川 颯')">中川 颯</div>
-    <div class="gate-staff-btn" onclick="selectStaff('平野 春之')">平野 春之</div>
-    <div class="gate-staff-btn" onclick="selectStaff('山根 祐司')">山根 祐司</div>
-    <div class="gate-staff-btn" onclick="selectStaff('村田 良典')">村田 良典</div>
-    <div class="gate-staff-btn" onclick="selectStaff('岡崎 由美')">岡崎 由美</div>
-    <div class="gate-staff-btn" onclick="selectStaff('藤井 真理亜')">藤井 真理亜</div>
-  </div>
-  <div id="selected-staff" style="margin:12px 0;min-height:32px;"></div>
-  <button class="gate-btn" id="gate-start-btn" onclick="startApp()" disabled>起動する</button>
+  <div class="gate-label">社員名を入力してください</div>
+  <input class="gate-input" id="name-input" type="text" placeholder="例：向畑 充">
+  <button class="gate-btn" onclick="startApp()">起動する</button>
   <div class="gate-note">
-    ※ 名前を選択して起動してください。<br>
-    ※ ブラウザを閉じても名前は保持されます。
+    ※ 入力した名前は記録に使用されます。<br>
+    ※ ブラウザを閉じても保持されます。
   </div>
   <div id="gate-error" class="error-box" style="display:none;margin-top:12px;"></div>
 </div>
@@ -504,41 +480,11 @@ body {
 </div>
 
 <script>
-
-const MAKER_LOGO = {
-  TOYO: 'https://mitsurumukaihata.github.io/tire-app/TOYO.jpg',
-  BRIDGESTONE: 'https://mitsurumukaihata.github.io/tire-app/BRIDGESTONE.jpg',
-  DUNLOP: 'https://mitsurumukaihata.github.io/tire-app/dunlop.jpg',
-  MICHELIN: 'https://mitsurumukaihata.github.io/tire-app/mish.jpg',
-  PIRELLI: 'https://mitsurumukaihata.github.io/tire-app/pirelli-logo-0.png',
-};
-
-function getMaker(pattern) {
-  const p = pattern.toUpperCase();
-  if (['XJE4'].includes(pattern)) return 'MICHELIN';
-  if (['FR01','TR01','R02','R01','TG01','ALL ROADS','WINTER D','ADR26','GU01'].includes(pattern)) return 'PIRELLI';
-  if (p.startsWith('W') || p.startsWith('G539') || ['R225','R241','LV01','W300','RTM810','RTM804','RTM807','RTM81C-170','RTM890','RTW910','RTW911','RTW970','RTG610'].includes(pattern)) return 'BRIDGESTONE';
-  if (p.startsWith('G539')) return 'BRIDGESTONE';
-  if (['LT01','SV01','VAN01','SPLT50','SPLT21','SPLT22','POWERTRAX'].includes(p) || p.startsWith('SP')) return 'DUNLOP';
-  if (p === 'POWERTRAX') return 'DUNLOP';
-  return 'TOYO';
-}
-
-function makerLogoImg(pattern, size=32) {
-  const maker = getMaker(pattern);
-  const url = MAKER_LOGO[maker];
-  if (!url) return '';
-  return `<img src="${url}" alt="${maker}" 
-    style="height:${size}px;max-width:${size*5}px;object-fit:contain;vertical-align:middle;
-    background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:6px;
-    border:1px solid rgba(255,255,255,0.2);">`;
-}
-
 // ─── DB マスターデータ ───────────────────────────────────────────────────────
 
 const DB_MAP = {
   'ltl_normal': {
-    id: '200a695f8e888018b5f5eac83fdad412',
+    id: '200a695f8e88806888fb000bdc6f6355',
     name: 'LTL TB ノーマル',
     icon: '🚛',
     sub: '大型 チューブレス',
@@ -651,21 +597,11 @@ function resetState() {
 
 // ─── Token Gate ──────────────────────────────────────────────────────────────
 
-let _selectedStaff = '';
-function selectStaff(name) {
-  _selectedStaff = name;
-  document.querySelectorAll('.gate-staff-btn').forEach(b => {
-    b.classList.toggle('selected', b.textContent === name);
-  });
-  const sel = document.getElementById('selected-staff');
-  if (sel) sel.innerHTML = `<div style="text-align:center;font-size:14px;font-weight:700;color:var(--accent);">選択中：${name}</div>`;
-  const btn = document.getElementById('gate-start-btn');
-  if (btn) btn.disabled = false;
-}
 function startApp() {
-  if (!_selectedStaff) { showGateError('社員名を選択してください'); return; }
-  USER_NAME = _selectedStaff;
-  localStorage.setItem('tire_name', _selectedStaff);
+  const n = document.getElementById('name-input').value.trim();
+  if (!n) { showGateError('社員名を入力してください'); return; }
+  USER_NAME = n;
+  localStorage.setItem('tire_name', n);
   launchApp();
 }
 
@@ -822,7 +758,6 @@ function renderPattern(el) {
           inputmode="latin" lang="en" oninput="filterPatterns(this.value)">
         <button class="search-clear" onclick="document.getElementById('pat-search').value='';filterPatterns('')">✕</button>
       </div>
-      <button class="btn-primary" id="pat-next-top" onclick="goStep(3)" ${state.pattern ? '' : 'disabled'} style="margin-bottom:10px;">次へ →</button>
       <div class="pattern-list" id="pattern-list">
         ${renderPatternItems(db.patterns, '')}
       </div>
@@ -836,15 +771,11 @@ function renderPatternItems(patterns, query) {
   const q = query.trim().toLowerCase();
   const hits = q ? patterns.filter(p => p.toLowerCase().includes(q)) : patterns;
   if (hits.length === 0) return `<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">該当なし</div>`;
-  return hits.map(p => {
-    const sel = state.pattern === p;
-    const logo = makerLogoImg(p, 14);
-    return `<div class="pattern-item${sel ? ' sel' : ''}" onclick="pickPattern('${p}')">
-      <div class="pattern-dot" style="background:${sel ? 'var(--accent)' : 'var(--border)'}"></div>
+  return hits.map(p => `
+    <div class="pattern-item${state.pattern === p ? ' sel' : ''}" onclick="pickPattern('${p}')">
+      <div class="pattern-dot" style="background:${state.pattern === p ? 'var(--accent)' : 'var(--border)'}"></div>
       <div class="pattern-name">${p}</div>
-      <div style="margin-left:auto;">${logo}</div>
-    </div>`;
-  }).join('');
+    </div>`).join('');
 }
 
 function filterPatterns(q) {
@@ -859,10 +790,8 @@ function pickPattern(p) {
   const q = document.getElementById('pat-search')?.value || '';
   const list = document.getElementById('pattern-list');
   if (list) list.innerHTML = renderPatternItems(db.patterns, q);
-  ['pat-next','pat-next-top'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.disabled = false;
-  });
+  const btn = document.getElementById('pat-next');
+  if (btn) btn.disabled = false;
 }
 
 // Step 3: 本数
@@ -1130,24 +1059,14 @@ function newEntry() { resetState(); renderEntry(); }
 // ─── Notion API ──────────────────────────────────────────────────────────────
 
 async function notionAPI(method, path, body) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
-  try {
-    const res = await fetch('https://notion-proxy.33322666666mm.workers.dev' + path, {
-      method: method,
-      headers: { 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal
-    });
-    clearTimeout(timer);
-    const data = await res.json();
-    if (data.object === 'error') throw new Error(data.message + ' (code: ' + data.code + ')');
-    return data;
-  } catch(e) {
-    clearTimeout(timer);
-    if (e.name === 'AbortError') throw new Error('タイムアウト（15秒）。通信環境を確認してください。');
-    throw new Error('通信エラー: ' + e.message);
-  }
+  const res = await fetch('https://notion-proxy.33322666666mm.workers.dev' + path, {
+    method: method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json();
+  if (data.object === 'error') throw new Error(data.message + ' (code: ' + data.code + ')');
+  return data;
 }
 
 function getNow() {
@@ -1175,8 +1094,7 @@ async function createRecord(kubun, warehouse) {
     '区分': { select: { name: kubun } },
     '処理タイプ': { select: { name: KUBUN_TO_SHORIYTYPE[kubun] || '出庫' } },
     '年月': { rich_text: [{ text: { content: getNow() } }] },
-    'メモ': { select: state.memo ? { name: state.memo } : null },
-    '作成者': { select: { name: (USER_NAME || '').replace(/ /g, '　') } },
+    'メモ': { rich_text: [{ text: { content: state.memo || '' } }] },
   };
   props[wField] = { select: { name: warehouse } };
   if (state.dest && (state.kubun === '出庫' || state.kubun === '準備')) {
@@ -1367,21 +1285,12 @@ function renderStockResult(size, catKey, records) {
     ${WAREHOUSES.map(w => `<div style="text-align:center;min-width:48px;"><div style="font-size:10px;color:var(--muted);">${w.replace('倉庫','')}</div></div>`).join('')}
   </div>`;
 
-  // 在庫あり順にソート（合計在庫が多い順）
-  const sortedPatterns = [...db.patterns].sort((a, b) => {
-    const sumA = WAREHOUSES.reduce((s, w) => s + (stock[a]?.[w] || 0), 0);
-    const sumB = WAREHOUSES.reduce((s, w) => s + (stock[b]?.[w] || 0), 0);
-    return sumB - sumA;
-  });
-
-  sortedPatterns.forEach(p => {
-    const logo = makerLogoImg(p, 13);
+  db.patterns.forEach(p => {
+    const counts = WAREHOUSES.map(w => stock[p]?.[w] || 0);
+    const allZero = counts.every(c => c === 0);
     html += `
       <div class="stock-row">
-        <div class="stock-pattern" style="display:flex;align-items:center;gap:6px;">
-          ${makerLogoImg(p, 30)}
-          <span style="font-weight:600;">${p}</span>
-        </div>
+        <div class="stock-pattern">${p}</div>
         <div class="stock-counts">
           ${WAREHOUSES.map(w => {
             const n = stock[p]?.[w] || 0;
@@ -1399,7 +1308,7 @@ function renderStockResult(size, catKey, records) {
     <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">
       全 ${records.length} 件のレコードから計算 ・ ${new Date().toLocaleTimeString('ja-JP')} 取得
     </div>
-    <button class="btn-primary" style="margin-top:16px;" onclick="renderStockHome()">🔍 別のサイズを検索</button>
+    <button class="btn-secondary" style="margin-top:16px;" onclick="renderStockHome()">← 別のサイズを検索</button>
   </div>`;
 
   el.innerHTML = html;
@@ -1410,7 +1319,8 @@ function renderStockResult(size, catKey, records) {
 window.onload = () => {
   const n = localStorage.getItem('tire_name');
   if (n) {
-    _selectedStaff = n;
+    USER_NAME = n;
+    launchApp();
   }
 };
 </script>
