@@ -468,6 +468,46 @@ body {
 .cat-sel-btn .csb-icon { font-size: 18px; margin-bottom: 6px; display: block; }
 .cat-sel-btn .csb-name { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.3; }
 .cat-sel-btn .csb-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* ── 価格検索ページ ── */
+.price-search-wrap { padding: 16px 20px 0; }
+.price-db-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.price-db-tab {
+  background: var(--s2); border: 1.5px solid var(--border);
+  border-radius: 20px; padding: 6px 12px;
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  cursor: pointer; transition: all 0.12s; white-space: nowrap;
+}
+.price-db-tab.active { border-color: var(--accent); background: rgba(240,165,0,0.1); color: var(--accent); }
+.price-result-list { padding: 0 20px 40px; }
+.price-card {
+  background: var(--s2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+}
+.price-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.price-pattern { font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 700; color: var(--text); }
+.price-val { font-size: 18px; font-weight: 900; color: var(--accent); text-align: right; line-height: 1; }
+.price-val-label { font-size: 9px; color: var(--muted); text-align: right; margin-top: 2px; }
+.price-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.price-size { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
+.price-tag {
+  font-size: 10px; font-weight: 700; padding: 2px 8px;
+  border-radius: 20px; display: inline-block;
+}
+.price-tag-maker { background: rgba(59,130,246,0.12); color: var(--blue); }
+.price-tag-cat   { background: rgba(240,165,0,0.1);   color: var(--accent); }
+.price-note { font-size: 11px; color: var(--muted); margin-top: 4px; border-top: 0.5px solid var(--border); padding-top: 4px; }
+.price-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+.price-count-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0 10px; border-bottom: 0.5px solid var(--border); margin-bottom: 10px;
+}
+.price-count-text { font-size: 11px; color: var(--muted); }
+.price-sort-sel {
+  background: var(--s2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 8px; font-size: 11px; color: var(--text);
+  font-family: 'Noto Sans JP', sans-serif; outline: none; cursor: pointer;
+}
 </style>
 </head>
 <body>
@@ -508,6 +548,7 @@ body {
   <div class="nav">
     <button class="nav-btn active" onclick="switchTab('entry')">入出庫</button>
     <button class="nav-btn" onclick="switchTab('stock')">在庫確認</button>
+    <button class="nav-btn" onclick="switchTab('price')">価格検索</button>
   </div>
 
   <!-- 入出庫ページ -->
@@ -521,6 +562,10 @@ body {
     <div id="stock-content"></div>
   </div>
 
+  <!-- 価格検索ページ -->
+  <div class="page" id="page-price">
+    <div id="price-content"></div>
+  </div>
 
 </div>
 
@@ -702,14 +747,239 @@ function logout() {
   location.reload();
 }
 
+// ─── 価格検索ページ ──────────────────────────────────────────────────────────
+
+const PRICE_DB_MAP = {
+  'lts': {
+    id: '213a695f8e888166bfb4e50682f7479c',
+    name: 'LTS ノーマル',
+    icon: '🚐'
+  },
+  'van': {
+    id: '214a695f8e8881ed89dffaa0a5eb3587',
+    name: 'バン',
+    icon: '🚌'
+  },
+  'pc': {
+    id: '2f6a695f8e8881e88f56ccd99cec9c74',
+    name: 'PC',
+    icon: '🚗'
+  },
+  'stl': {
+    id: '249a695f8e8881628ddde4fdbf285c2d',
+    name: 'スタッドレス',
+    icon: '❄️'
+  }
+};
+
+let priceState = {
+  initialized: false,
+  dbKey: 'lts',
+  query: '',
+  sortBy: 'price_asc',
+  results: [],
+  loading: false
+};
+
+function renderPriceHome() {
+  priceState.initialized = true;
+  const el = document.getElementById('price-content');
+  el.innerHTML = `
+    <div class="price-search-wrap">
+      <div class="screen-label" style="padding-top:4px;">価格検索</div>
+      <div class="screen-title" style="margin-bottom:10px;">A表 価格参照</div>
+      <div class="price-db-tabs" id="price-db-tabs">
+        ${Object.entries(PRICE_DB_MAP).map(([k,db]) =>
+          `<div class="price-db-tab${priceState.dbKey===k?' active':''}" onclick="priceSelectDb('${k}')">${db.icon} ${db.name}</div>`
+        ).join('')}
+      </div>
+      <div class="search-box" style="margin-bottom:10px;">
+        <input id="price-search-inp" type="text" placeholder="サイズ・パターンで絞り込み"
+          autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+          value="${priceState.query}" oninput="priceFilterInput(this.value)">
+        <button class="search-clear" onclick="priceClearSearch()">✕</button>
+      </div>
+      <button class="btn-primary" style="margin-bottom:12px;" onclick="priceSearch()">🔍 検索する</button>
+    </div>
+    <div id="price-result-area"></div>`;
+  if (priceState.results.length > 0) renderPriceResults();
+}
+
+function priceSelectDb(key) {
+  priceState.dbKey = key;
+  priceState.results = [];
+  priceState.query = '';
+  renderPriceHome();
+}
+
+function priceFilterInput(v) {
+  priceState.query = v;
+}
+
+function priceClearSearch() {
+  priceState.query = '';
+  const inp = document.getElementById('price-search-inp');
+  if (inp) inp.value = '';
+}
+
+async function priceSearch() {
+  if (priceState.loading) return;
+  priceState.loading = true;
+  const area = document.getElementById('price-result-area');
+  if (area) area.innerHTML = `
+    <div class="loading-wrap">
+      <div class="spinner"></div>
+      <div class="loading-text">価格データを取得中…</div>
+    </div>`;
+
+  const db = PRICE_DB_MAP[priceState.dbKey];
+  const q = priceState.query.trim();
+
+  try {
+    let all = [], cursor = undefined;
+    while (true) {
+      const body = { page_size: 100 };
+      if (q) {
+        body.filter = { property: 'サイズ', rich_text: { contains: q } };
+      }
+      if (cursor) body.start_cursor = cursor;
+      const res = await notionAPI('POST', `/databases/${db.id}/query`, body);
+      if (res.object === 'error') throw new Error(res.message);
+      all = all.concat(res.results);
+      if (!res.has_more) break;
+      cursor = res.next_cursor;
+    }
+    let rows = all.map(r => {
+      const props = r.properties;
+      return {
+        id: r.id,
+        name: props['レコード名']?.title?.[0]?.plain_text || '',
+        size: props['サイズ']?.rich_text?.[0]?.plain_text || '',
+        pattern: props['パターン']?.select?.name || '',
+        maker: props['メーカー']?.select?.name || '',
+        cat: props['カテゴリ']?.select?.name || '',
+        price: props['価格']?.number ?? null,
+        note: props['備考']?.rich_text?.[0]?.plain_text || '',
+        weight: props['加重指数']?.rich_text?.[0]?.plain_text || '',
+      };
+    });
+    if (q) {
+      const lq = q.toLowerCase();
+      rows = rows.filter(r =>
+        r.size.toLowerCase().includes(lq) ||
+        r.pattern.toLowerCase().includes(lq) ||
+        r.name.toLowerCase().includes(lq)
+      );
+    }
+    // 価格なし（null）は末尾に
+    rows.sort((a, b) => {
+      if (a.price === null && b.price === null) return 0;
+      if (a.price === null) return 1;
+      if (b.price === null) return -1;
+      return a.price - b.price;
+    });
+    priceState.results = rows;
+    priceState.loading = false;
+    renderPriceResults();
+  } catch(e) {
+    priceState.loading = false;
+    if (area) area.innerHTML = `
+      <div class="content">
+        <div class="error-box">取得に失敗しました。<br><small>${e.message}</small></div>
+        <button class="btn-secondary" onclick="priceSearch()">再試行</button>
+      </div>`;
+  }
+}
+
+function priceSortRows(rows, sortBy) {
+  const s = [...rows];
+  if (sortBy === 'price_asc')  return s.sort((a,b) => { if(a.price===null)return 1; if(b.price===null)return -1; return a.price-b.price; });
+  if (sortBy === 'price_desc') return s.sort((a,b) => { if(a.price===null)return 1; if(b.price===null)return -1; return b.price-a.price; });
+  if (sortBy === 'size')       return s.sort((a,b) => a.size.localeCompare(b.size));
+  if (sortBy === 'pattern')    return s.sort((a,b) => a.pattern.localeCompare(b.pattern));
+  return s;
+}
+
+function priceChangeSort(v) {
+  priceState.sortBy = v;
+  renderPriceResults();
+}
+
+function renderPriceResults() {
+  const area = document.getElementById('price-result-area');
+  if (!area) return;
+  const rows = priceSortRows(priceState.results, priceState.sortBy);
+  const withPrice = rows.filter(r => r.price !== null);
+  const minP = withPrice.length ? Math.min(...withPrice.map(r=>r.price)) : null;
+  const avgP = withPrice.length ? Math.round(withPrice.reduce((s,r)=>s+r.price,0)/withPrice.length) : null;
+
+  let statsHtml = '';
+  if (withPrice.length > 0) {
+    statsHtml = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 20px 12px;">
+      <div style="background:var(--s2);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">最安値</div>
+        <div style="font-size:16px;font-weight:900;color:var(--accent);">¥${minP.toLocaleString()}</div>
+      </div>
+      <div style="background:var(--s2);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">平均価格</div>
+        <div style="font-size:16px;font-weight:900;color:var(--text);">¥${avgP.toLocaleString()}</div>
+      </div>
+    </div>`;
+  }
+
+  if (rows.length === 0) {
+    area.innerHTML = statsHtml + `<div class="price-empty">該当するタイヤが見つかりません</div>`;
+    return;
+  }
+
+  let html = statsHtml + `
+    <div class="price-result-list">
+      <div class="price-count-bar">
+        <span class="price-count-text">${rows.length} 件</span>
+        <select class="price-sort-sel" onchange="priceChangeSort(this.value)">
+          <option value="price_asc"${priceState.sortBy==='price_asc'?' selected':''}>価格：安い順</option>
+          <option value="price_desc"${priceState.sortBy==='price_desc'?' selected':''}>価格：高い順</option>
+          <option value="size"${priceState.sortBy==='size'?' selected':''}>サイズ順</option>
+          <option value="pattern"${priceState.sortBy==='pattern'?' selected':''}>パターン順</option>
+        </select>
+      </div>`;
+
+  rows.forEach(r => {
+    const priceHtml = r.price !== null
+      ? `<div class="price-val">¥${r.price.toLocaleString()}</div><div class="price-val-label">税別 / 1本</div>`
+      : `<div class="price-val" style="font-size:13px;color:var(--muted);">要確認</div>`;
+    html += `
+      <div class="price-card">
+        <div class="price-card-head">
+          <div>
+            <div class="price-pattern">${r.pattern || r.name}</div>
+            ${r.size ? `<div class="price-size" style="margin-top:3px;">${r.size}</div>` : ''}
+          </div>
+          <div style="text-align:right;">${priceHtml}</div>
+        </div>
+        <div class="price-meta">
+          ${r.maker ? `<span class="price-tag price-tag-maker">${r.maker}</span>` : ''}
+          ${r.cat ? `<span class="price-tag price-tag-cat">${r.cat}</span>` : ''}
+          ${r.weight ? `<span style="font-size:10px;color:var(--muted);">${r.weight}</span>` : ''}
+        </div>
+        ${r.note ? `<div class="price-note">${r.note}</div>` : ''}
+      </div>`;
+  });
+  html += `</div>`;
+  area.innerHTML = html;
+}
+
 // ─── Tab ─────────────────────────────────────────────────────────────────────
 
 function switchTab(tab) {
+  const tabs = ['entry','stock','price'];
   document.querySelectorAll('.nav-btn').forEach((b,i) => {
-    b.classList.toggle('active', ['entry','stock'][i] === tab);
+    b.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
+  if (tab === 'price' && !priceState.initialized) renderPriceHome();
 }
 
 // ─── Step bar ────────────────────────────────────────────────────────────────
