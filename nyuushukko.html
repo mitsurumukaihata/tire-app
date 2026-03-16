@@ -521,11 +521,14 @@ function getMaker(pattern) {
   return 'TOYO';
 }
 
-function makerLogoImg(pattern, size=24) {
+function makerLogoImg(pattern, size=32) {
   const maker = getMaker(pattern);
   const url = MAKER_LOGO[maker];
   if (!url) return '';
-  return `<img src="${url}" alt="${maker}" style="height:${size}px;max-width:${size*4}px;object-fit:contain;vertical-align:middle;border-radius:3px;background:#fff;padding:1px 3px;">`;
+  return `<img src="${url}" alt="${maker}" 
+    style="height:${size}px;max-width:${size*5}px;object-fit:contain;vertical-align:middle;
+    border-radius:4px;background:#fff;padding:2px 6px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.2);">`;
 }
 
 // ─── DB マスターデータ ───────────────────────────────────────────────────────
@@ -1124,14 +1127,24 @@ function newEntry() { resetState(); renderEntry(); }
 // ─── Notion API ──────────────────────────────────────────────────────────────
 
 async function notionAPI(method, path, body) {
-  const res = await fetch('https://notion-proxy.33322666666mm.workers.dev' + path, {
-    method: method,
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const data = await res.json();
-  if (data.object === 'error') throw new Error(data.message + ' (code: ' + data.code + ')');
-  return data;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch('https://notion-proxy.33322666666mm.workers.dev' + path, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (data.object === 'error') throw new Error(data.message + ' (code: ' + data.code + ')');
+    return data;
+  } catch(e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') throw new Error('タイムアウト（15秒）。通信環境を確認してください。');
+    throw new Error('通信エラー: ' + e.message);
+  }
 }
 
 function getNow() {
@@ -1363,7 +1376,7 @@ function renderStockResult(size, catKey, records) {
     html += `
       <div class="stock-row">
         <div class="stock-pattern" style="display:flex;align-items:center;gap:6px;">
-          ${makerLogoImg(p, 20)}
+          ${makerLogoImg(p, 30)}
           <span style="font-weight:600;">${p}</span>
         </div>
         <div class="stock-counts">
