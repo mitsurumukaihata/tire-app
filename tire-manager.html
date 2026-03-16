@@ -751,22 +751,22 @@ function logout() {
 
 const PRICE_DB_MAP = {
   'lts': {
-    id: '213a695f8e8881f68f4e000b91e2cd43',
+    id: '213a695f8e888166bfb4e50682f7479c',
     name: 'LTS ノーマル',
     icon: '🚐'
   },
   'van': {
-    id: '214a695f8e8881d49c3d000bcdbc5f4f',
+    id: '214a695f8e8881ed89dffaa0a5eb3587',
     name: 'バン',
     icon: '🚌'
   },
   'pc': {
-    id: '2f6a695f8e8881e6af5b000bafc69f9e',
+    id: '2f6a695f8e8881e88f56ccd99cec9c74',
     name: 'PC',
     icon: '🚗'
   },
   'stl': {
-    id: '249a695f8e8881228c3d000baa91058c',
+    id: '249a695f8e8881628ddde4fdbf285c2d',
     name: 'スタッドレス',
     icon: '❄️'
   }
@@ -798,8 +798,11 @@ function renderPriceHome() {
       <div class="search-box" style="margin-bottom:6px;">
         <input id="price-search-inp" type="text" placeholder="例：195　または　225/80"
           autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
-          inputmode="text" value="${priceState.query}"
-          oninput="priceFilterSizes(this.value)">
+          inputmode="latin" lang="en"
+          value="${priceState.query}"
+          oninput="priceFilterSizes(this.value)"
+          onfocus="this.setAttribute('lang','en')"
+          style="ime-mode:disabled;">
         <button class="search-clear" onclick="priceClearSearch()">✕</button>
       </div>
       <div id="price-size-candidates" class="candidates" style="margin-bottom:6px;"></div>
