@@ -796,13 +796,13 @@ function renderPriceHome() {
       </div>
       <div class="screen-sub" style="margin-bottom:8px;">サイズを入力（3文字以上で候補表示）</div>
       <div class="search-box" style="margin-bottom:6px;">
-        <input id="price-search-inp" type="text" placeholder="例：195　または　225/80"
+        <input id="price-search-inp" type="search"
+          placeholder="例：195 または 22580R17"
           autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
-          inputmode="latin" lang="en"
+          inputmode="url" lang="en" enterkeyhint="search"
           value="${priceState.query}"
-          oninput="priceFilterSizes(this.value)"
-          onfocus="this.setAttribute('lang','en')"
-          style="ime-mode:disabled;">
+          oninput="priceInputNormalize(this)"
+          style="ime-mode:disabled;font-family:'DM Mono',monospace;">
         <button class="search-clear" onclick="priceClearSearch()">✕</button>
       </div>
       <div id="price-size-candidates" class="candidates" style="margin-bottom:6px;"></div>
@@ -835,6 +835,32 @@ const PRICE_SIZE_MAP = {
   'stl': ['155/65R14','165/65R14','175/65R14','185/60R14','185/65R14','175/55R15','185/55R15','185/60R15','195/50R15','195/55R15','195/60R15','195/65R15','205/65R15','215/65R15','175/55R16','195/55R16','205/55R16','205/60R16','215/55R16','215/60R16','215/65R16','225/60R16','225/65R16','145R12','155R12','165R13','175R13','155/80R14','165/80R14','175/80R14','185/80R14','185R14','195R14','195/80R15','205/80R15']
 };
 
+function priceInputNormalize(el) {
+  let v = el.value;
+  // 全角→半角変換
+  v = v.replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  v = v.replace(/[／]/g, '/').replace(/[．]/g, '.').replace(/　/g, ' ');
+  // 大文字統一
+  v = v.toUpperCase();
+  if (el.value !== v) {
+    const pos = el.selectionStart;
+    el.value = v;
+    try { el.setSelectionRange(pos, pos); } catch(e) {}
+  }
+  priceState.query = v;
+  priceFilterSizes(v);
+}
+
+// サイズ正規化：195、22580、22580R17、225/80R17.5 などを統一比較用に変換
+function normalizeSizeQuery(q) {
+  // スラッシュ・Rを省いた数字列にする
+  return q.replace(/[\/R\.]/gi, '').replace(/\s/g, '').toUpperCase();
+}
+
+function normalizeSizeStr(s) {
+  return s.replace(/[\/R\.]/gi, '').replace(/\s/g, '').toUpperCase();
+}
+
 function priceFilterSizes(v) {
   priceState.query = v;
   const q = v.trim();
@@ -848,8 +874,11 @@ function priceFilterSizes(v) {
     return;
   }
   const sizes = PRICE_SIZE_MAP[priceState.dbKey] || [];
-  const lq = q.toLowerCase();
-  const hits = sizes.filter(s => s.toLowerCase().replace(/[\/\s]/g,'').includes(lq.replace(/[\/\s]/g,'')) || s.toLowerCase().includes(lq)).slice(0, 10);
+  const nq = normalizeSizeQuery(q);
+  const hits = sizes.filter(s => {
+    const ns = normalizeSizeStr(s);
+    return ns.includes(nq) || s.toUpperCase().includes(q.replace(/\s/g,''));
+  }).slice(0, 10);
   if (hits.length === 0) {
     c.innerHTML = `<div style="text-align:center;padding:8px;font-size:12px;color:var(--muted);">候補なし — 全件検索するには検索ボタンを押してください</div>`;
     // 入力値でそのまま検索できるようにボタンは有効化
