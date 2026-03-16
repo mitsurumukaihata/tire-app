@@ -113,6 +113,27 @@ body {
 .gate-staff-btn:active { transform: scale(0.97); }
 .gate-staff-btn.selected { border-color: var(--accent); background: rgba(255,92,43,0.1); color: var(--accent); }
 .gate-start-label { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+.prep-divider { text-align:center; color:var(--muted); font-size:12px; margin:12px 0; letter-spacing:0.05em; }
+.btn-prep {
+  width:100%; background:rgba(59,130,246,0.12); border:1.5px solid var(--blue);
+  border-radius:10px; padding:13px; color:var(--blue); font-size:14px;
+  font-family:'Noto Sans JP',sans-serif; cursor:pointer; font-weight:700;
+  transition:all 0.15s;
+}
+.btn-prep:active { transform:scale(0.97); }
+.prep-list-item {
+  background:var(--s2); border:1px solid var(--border); border-radius:10px;
+  padding:12px 14px; margin-bottom:8px; cursor:pointer; transition:all 0.15s;
+}
+.prep-list-item:active { transform:scale(0.98); border-color:var(--accent); }
+.prep-row1 { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.prep-dest { font-size:13px; font-weight:700; color:var(--text); flex:1; }
+.prep-pattern { font-size:13px; font-weight:700; color:var(--accent); }
+.prep-size { font-size:12px; color:var(--muted); font-family:'DM Mono',monospace; }
+.prep-row2 { display:flex; gap:12px; }
+.prep-qty { font-size:12px; color:var(--green); font-weight:700; }
+.prep-warehouse { font-size:12px; color:var(--muted); }
+.prep-empty { text-align:center; padding:32px 20px; color:var(--muted); font-size:14px; }
 
 /* ── App Shell ── */
 #app { display: none; flex-direction: column; min-height: 100vh; }
@@ -728,6 +749,8 @@ function renderSize(el) {
       </div>
       <div id="sz-candidates" class="candidates"></div>
       <button class="btn-primary" id="sz-next" onclick="goStep(1)" disabled>次へ →</button>
+      <div class="prep-divider">または</div>
+      <button class="btn-prep" onclick="renderPrepCatSelect()">📋 準備中タイヤを出庫する</button>
     </div>`;
   const inp = document.getElementById('sz-input');
   inp.addEventListener('input', e => filterSizes(e.target.value));
@@ -1176,8 +1199,13 @@ async function createRecord(kubun, warehouse) {
   if (state.dest && (state.kubun === '出庫' || state.kubun === '準備')) {
     props['出庫先'] = { rich_text: [{ text: { content: state.dest } }] };
   }
-  // メモはrich_text型（全DB共通）
-  props['メモ'] = { rich_text: state.memo ? [{ text: { content: state.memo } }] : [] };
+  // LTL TBノーマルだけメモがselect型、それ以外はrich_text型
+  if (state.cat === 'ltl_normal') {
+    if (state.memo) props['メモ'] = { select: { name: state.memo } };
+    else delete props['メモ'];
+  } else {
+    props['メモ'] = { rich_text: state.memo ? [{ text: { content: state.memo } }] : [] };
+  }
 
   return await notionAPI('POST', '/pages', {
     parent: { database_id: db.id },
@@ -1205,6 +1233,194 @@ async function submitEntry() {
     const errEl = document.getElementById('confirm-error');
     if (errEl) errEl.innerHTML = `<div class="error-box">送信に失敗しました。<br><small>${e.message}</small></div>`;
     if (btn) { btn.disabled = false; btn.textContent = 'この内容で送信する'; }
+  }
+}
+
+// ─── 準備リスト機能 ──────────────────────────────────────────────────────────
+
+function renderPrepCatSelect() {
+  const el = document.getElementById('entry-content');
+  el.innerHTML = `
+    <div class="content">
+      <div class="screen-label">準備中タイヤを出庫する</div>
+      <div class="screen-title">カテゴリーを選択</div>
+      <div class="cat-grid">
+        ${Object.entries(DB_MAP).map(([k, db]) => `
+          <div class="cat-card" onclick="loadPrepList('${k}')">
+            <span class="cat-icon">${db.icon}</span>
+            <div class="cat-name">${db.name}</div>
+            <div class="cat-sub">${db.sub}</div>
+          </div>`).join('')}
+      </div>
+      <button class="btn-secondary" onclick="renderEntry()">← 戻る</button>
+    </div>`;
+}
+
+async function loadPrepList(catKey) {
+  const el = document.getElementById('entry-content');
+  el.innerHTML = `
+    <div class="loading-wrap">
+      <div class="spinner"></div>
+      <div class="loading-text">準備中タイヤを取得中…</div>
+    </div>`;
+
+  const db = DB_MAP[catKey];
+  try {
+    let all = [], cursor = undefined;
+    while (true) {
+      const body = {
+        filter: { property: '区分', select: { equals: '準備' } },
+        sorts: [{ property: '日付', direction: 'descending' }],
+        page_size: 100
+      };
+      if (cursor) body.start_cursor = cursor;
+      const res = await notionAPI('POST', `/databases/${db.id}/query`, body);
+      if (res.object === 'error') throw new Error(res.message);
+      all = all.concat(res.results);
+      if (!res.has_more) break;
+      cursor = res.next_cursor;
+    }
+    renderPrepList(catKey, all);
+  } catch(e) {
+    el.innerHTML = `
+      <div class="content">
+        <div class="error-box">データの取得に失敗しました。<br><small>${e.message}</small></div>
+        <button class="btn-secondary" onclick="renderPrepCatSelect()">← 戻る</button>
+      </div>`;
+  }
+}
+
+function renderPrepList(catKey, records) {
+  const el = document.getElementById('entry-content');
+  const db = DB_MAP[catKey];
+
+  let listHtml = '';
+  if (records.length === 0) {
+    listHtml = `<div class="prep-empty">準備中のタイヤはありません</div>`;
+  } else {
+    listHtml = records.map(r => {
+      const p = r.properties;
+      const dest = p['出庫先']?.rich_text?.[0]?.plain_text || '（出庫先なし）';
+      const pattern = p['パターン名']?.select?.name || '―';
+      const size = p['サイズコード']?.select?.name || '―';
+      const qty = p['数量']?.number ?? '―';
+      const wField = db.warehouseField;
+      const warehouse = p[wField]?.select?.name || '―';
+      return `
+        <div class="prep-list-item" onclick="renderPrepEdit('${r.id}','${catKey}')">
+          <div class="prep-row1">
+            <span class="prep-dest">${dest}</span>
+            <span class="prep-pattern">${pattern}</span>
+            <span class="prep-size">${size}</span>
+          </div>
+          <div class="prep-row2">
+            <span class="prep-qty">📦 ${qty}本</span>
+            <span class="prep-warehouse">🏭 ${warehouse}</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  el.innerHTML = `
+    <div class="content">
+      <div class="screen-label">準備中タイヤ一覧</div>
+      <div class="screen-title">${db.icon} ${db.name}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">${records.length}件の準備中タイヤ</div>
+      ${listHtml}
+      <button class="btn-secondary" style="margin-top:8px;" onclick="renderPrepCatSelect()">← カテゴリーに戻る</button>
+    </div>`;
+}
+
+function renderPrepEdit(pageId, catKey) {
+  const el = document.getElementById('entry-content');
+  const db = DB_MAP[catKey];
+  el.innerHTML = `
+    <div class="loading-wrap">
+      <div class="spinner"></div>
+      <div class="loading-text">詳細を取得中…</div>
+    </div>`;
+
+  notionAPI('GET', `/pages/${pageId}`).then(page => {
+    const p = page.properties;
+    const dest = p['出庫先']?.rich_text?.[0]?.plain_text || '';
+    const pattern = p['パターン名']?.select?.name || '―';
+    const size = p['サイズコード']?.select?.name || '―';
+    const qty = p['数量']?.number ?? 0;
+    const wField = db.warehouseField;
+    const warehouse = p[wField]?.select?.name || '';
+
+    el.innerHTML = `
+      <div class="content">
+        <div class="screen-label">準備 → 出庫に変更</div>
+        <div class="screen-title">${pattern}</div>
+        <div class="confirm-card">
+          <div class="confirm-row"><span class="confirm-label">サイズ</span><span class="confirm-value">${size}</span></div>
+          <div class="confirm-row"><span class="confirm-label">カテゴリー</span><span class="confirm-value">${db.name}</span></div>
+          <div class="confirm-row"><span class="confirm-label">倉庫</span>
+            <select id="prep-warehouse" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;">
+              ${WAREHOUSES.map(w => `<option value="${w}" ${w === warehouse ? 'selected' : ''}>${w}</option>`).join('')}
+            </select>
+          </div>
+          <div class="confirm-row"><span class="confirm-label">出庫先</span>
+            <input id="prep-dest" type="text" value="${dest}"
+              style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;width:140px;"
+              placeholder="出庫先（任意）">
+          </div>
+          <div class="confirm-row"><span class="confirm-label">本数</span>
+            <input id="prep-qty" type="number" value="${qty}" min="1"
+              style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;width:80px;">
+          </div>
+        </div>
+        <div id="prep-error"></div>
+        <button class="btn-primary" id="prep-send-btn" onclick="submitPrepToShukko('${pageId}','${catKey}')">
+          ✅ 出庫に変更する
+        </button>
+        <button class="btn-secondary" onclick="loadPrepList('${catKey}')">← 一覧に戻る</button>
+      </div>`;
+  }).catch(e => {
+    el.innerHTML = `
+      <div class="content">
+        <div class="error-box">取得に失敗しました。<br><small>${e.message}</small></div>
+        <button class="btn-secondary" onclick="loadPrepList('${catKey}')">← 戻る</button>
+      </div>`;
+  });
+}
+
+async function submitPrepToShukko(pageId, catKey) {
+  const btn = document.getElementById('prep-send-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '更新中…'; }
+
+  const dest = document.getElementById('prep-dest')?.value.trim() || '';
+  const qty = parseInt(document.getElementById('prep-qty')?.value) || 0;
+  const db = DB_MAP[catKey];
+  const wField = db.warehouseField;
+  const warehouse = document.getElementById('prep-warehouse')?.value || '';
+
+  try {
+    const props = {
+      '区分': { select: { name: '出庫' } },
+      '処理タイプ': { select: { name: '出庫' } },
+      '数量': { number: qty },
+    };
+    props[wField] = { select: { name: warehouse } };
+    if (dest) props['出庫先'] = { rich_text: [{ text: { content: dest } }] };
+
+    await notionAPI('PATCH', `/pages/${pageId}`, { properties: props });
+
+    // 完了画面
+    const el = document.getElementById('entry-content');
+    el.innerHTML = `
+      <div class="content" style="text-align:center;padding:40px 20px;">
+        <div style="font-size:48px;margin-bottom:16px;">✅</div>
+        <div class="screen-title">出庫に変更しました</div>
+        <div style="font-size:14px;color:var(--muted);margin-bottom:32px;">Notionのレコードを更新しました</div>
+        <button class="btn-primary" onclick="renderEntry()">新しい入出庫を記録する</button>
+        <button class="btn-prep" style="margin-top:8px;" onclick="renderPrepCatSelect()">📋 準備リストに戻る</button>
+      </div>`;
+  } catch(e) {
+    const errEl = document.getElementById('prep-error');
+    if (errEl) errEl.innerHTML = `<div class="error-box">更新に失敗しました。<br><small>${e.message}</small></div>`;
+    if (btn) { btn.disabled = false; btn.textContent = '✅ 出庫に変更する'; }
   }
 }
 
