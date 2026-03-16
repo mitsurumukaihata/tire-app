@@ -521,11 +521,11 @@ function getMaker(pattern) {
   return 'TOYO';
 }
 
-function makerLogoImg(pattern, size=16) {
+function makerLogoImg(pattern, size=24) {
   const maker = getMaker(pattern);
   const url = MAKER_LOGO[maker];
   if (!url) return '';
-  return `<img src="${url}" alt="${maker}" style="height:${size}px;width:auto;object-fit:contain;vertical-align:middle;border-radius:2px;">`;
+  return `<img src="${url}" alt="${maker}" style="height:${size}px;max-width:${size*4}px;object-fit:contain;vertical-align:middle;border-radius:3px;background:#fff;padding:1px 3px;">`;
 }
 
 // ─── DB マスターデータ ───────────────────────────────────────────────────────
@@ -1159,7 +1159,8 @@ async function createRecord(kubun, warehouse) {
     '区分': { select: { name: kubun } },
     '処理タイプ': { select: { name: KUBUN_TO_SHORIYTYPE[kubun] || '出庫' } },
     '年月': { rich_text: [{ text: { content: getNow() } }] },
-    'メモ': { rich_text: [{ text: { content: (USER_NAME ? '[' + USER_NAME + '] ' : '') + (state.memo || '') } }] },
+    'メモ': { rich_text: [{ text: { content: state.memo || '' } }] },
+    '作成者': { select: { name: (USER_NAME || '').replace(/ /g, '　') } },
   };
   props[wField] = { select: { name: warehouse } };
   if (state.dest && (state.kubun === '出庫' || state.kubun === '準備')) {
@@ -1362,8 +1363,8 @@ function renderStockResult(size, catKey, records) {
     html += `
       <div class="stock-row">
         <div class="stock-pattern" style="display:flex;align-items:center;gap:6px;">
-          ${logo}
-          <span>${p}</span>
+          ${makerLogoImg(p, 20)}
+          <span style="font-weight:600;">${p}</span>
         </div>
         <div class="stock-counts">
           ${WAREHOUSES.map(w => {
