@@ -498,6 +498,33 @@ body {
 .price-tag-cat   { background: rgba(240,165,0,0.1);   color: var(--accent); }
 .price-note { font-size: 11px; color: var(--muted); margin-top: 4px; border-top: 0.5px solid var(--border); padding-top: 4px; }
 .price-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+
+/* ── 価格検索 掛率タブ ── */
+.pct-tabs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 12px; }
+.pct-tab {
+  font-size: 11px; font-weight: 700; padding: 6px 8px;
+  border-radius: 8px; border: 1.5px solid var(--border);
+  color: var(--muted); cursor: pointer;
+  background: var(--s2); text-align: center; min-width: 48px;
+  transition: all 0.12s;
+}
+.pct-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pct-tab:active { transform: scale(0.95); }
+
+/* ── 見積もり入力行 ── */
+.est-row {
+  display: grid; grid-template-columns: 1fr 72px 64px;
+  gap: 5px; align-items: center; margin-bottom: 7px;
+}
+.est-lbl { font-size: 13px; color: var(--text); }
+.est-inp {
+  width: 100%; background: var(--s2); border: 1.5px solid var(--border);
+  border-radius: 8px; padding: 7px 9px; font-size: 13px;
+  font-family: 'DM Mono', monospace; color: var(--text);
+  outline: none; text-align: right; transition: border-color 0.15s;
+}
+.est-inp:focus { border-color: var(--accent); }
+.est-inp::placeholder { color: var(--muted); font-family: 'Noto Sans JP', sans-serif; font-size: 11px; }
 .price-count-bar {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 0 10px; border-bottom: 0.5px solid var(--border); margin-bottom: 10px;
@@ -777,13 +804,47 @@ let priceState = {
   dbKey: 'lts',
   query: '',
   selectedSize: '',
-  sortBy: 'price_asc',
-  results: [],
-  loading: false
+  makerFilter: 'all',
+  // step: 'search' | 'pattern' | 'result'
+  step: 'search',
+  patternRows: [],   // サイズ絞り込み後の全行（パターン選択用）
+  selectedPattern: '',
+  results: [],       // パターン選択後の絞り込み結果
+  loading: false,
+  // 見積もり状態（カードIDキー）
+  estOpen: {},
+  estPct: {},
 };
 
+// ─── サイズ候補マスタ ────────────────────────────────────────────────────────
+const PRICE_SIZE_MAP = {
+  'lts': ['175/75R15','185/65R15','185/75R15','195/75R15','195/85R15','205/80R15','185/70R16','185/85R16','195/85R16','205/65R16','205/70R16','225/70R16','205/75R16','205/85R16','215/85R16','225/85R16','195/60R17.5','195/70R17.5','205/60R17.5','225/60R17.5','205/70R17.5','205/80R17.5','215/70R17.5 118/116'],
+  'van': ['145/80R12 86/84','145/80R12 80/78','145R12 6P','145R12 8P','155R12 8P','165/80R13 90/88','165/80R13 94/93','165R13 6P','165R13 8P','145R13 6P','145R13 8P','155R13 6P','155R13 8P','175R13 8P','155/80R14 88/86','165/80R14 91/90','165/80R14 97/95','165R14 6P','165R14 8P','175/80R14 99/98','175R14 6P','175R14 8P','185/80R14 97N','185/80R14 102/10','185R14 6P','185R14 8P','195R14 8P','195/80R15 103/101','185/75R15 106/104','195/70R15 106/104','215/70R15 107/105','185/80R15 103/101','195/80R15 107/105','205/80R15 109/107'],
+  'pc':  ['165/55R14','165/65R14','175/65R14','185/60R14','185/65R14','195/65R14','165/55R15','165/60R15','175/55R15','175/60R15','185/55R15','185/60R15','195/50R15','195/55R15','195/60R15','195/65R15','205/60R15','205/65R15','215/60R15','215/65R15','165/45R16','175/50R16','185/50R16','195/45R16','195/50R16','205/45R16','205/50R16','205/55R16','205/60R16','205/65R16','215/45R16','215/50R16','215/55R16','215/60R16','225/55R16','225/60R16','235/55R16'],
+  'stl': ['165/55 R15','165/65 R14','175/60R16','175/80R16','185/55R16','185/60R16','185/85R16','195/45R17','195/50R16','195/50R19','195/55R16','195/60R16','195/60R17','195/65R16','205/50R17','205/55R16','205/55R17','205/60R16','205/65R16','215/45R17','215/45R18','215/50R17','215/50R18','215/55R17','215/55R18','215/60R16','215/60R17','215/65R16','215/70R16','225/40R18','225/45R17','225/45R18','225/50R17','225/50R18','225/55R17','225/55R18','225/55R19','225/60R17','225/60R18','225/65R17','225/70R16','225/75R16','235/45R18','235/50R18','235/50R20','235/55R18','235/55R19','235/60R18','235/65R18','235/70R16','235/85R16','245/40R18','245/45R18','245/65R17','255/45R20','255/70R18','255/85R16','265/60R18','265/65R17','265/65R18','265/70R16','265/70R17','285/60R18','285/70R17']
+};
+
+// ─── DB切替 ──────────────────────────────────────────────────────────────────
+function priceSelectDb(key) {
+  priceState.dbKey = key;
+  priceState.step = 'search';
+  priceState.query = '';
+  priceState.selectedSize = '';
+  priceState.makerFilter = 'all';
+  priceState.patternRows = [];
+  priceState.selectedPattern = '';
+  priceState.results = [];
+  priceState.estOpen = {};
+  priceState.estPct = {};
+  renderPriceHome();
+}
+
+// ─── STEP1: サイズ入力画面 ───────────────────────────────────────────────────
 function renderPriceHome() {
   priceState.initialized = true;
+  if (priceState.step === 'pattern') { renderPricePatternStep(); return; }
+  if (priceState.step === 'result')  { renderPriceResultStep();  return; }
+
   const el = document.getElementById('price-content');
   el.innerHTML = `
     <div class="price-search-wrap">
@@ -797,7 +858,7 @@ function renderPriceHome() {
       <div class="screen-sub" style="margin-bottom:8px;">サイズを入力（3文字以上で候補表示）</div>
       <div class="search-box" style="margin-bottom:6px;">
         <input id="price-search-inp" type="search"
-          placeholder="例：195 または 22580R17"
+          placeholder="例：225 または 22585R16"
           autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
           inputmode="numeric" lang="en" enterkeyhint="search"
           value="${priceState.query}"
@@ -807,40 +868,18 @@ function renderPriceHome() {
       </div>
       <div id="price-size-candidates" class="candidates" style="margin-bottom:6px;"></div>
       <button class="btn-primary" id="price-search-btn" style="margin-bottom:12px;"
-        onclick="priceSearch()" ${priceState.selectedSize?'':'disabled'}>
-        🔍 ${priceState.selectedSize ? priceState.selectedSize+' を検索' : 'サイズを選択してください'}
+        onclick="priceGoPattern()" ${priceState.selectedSize?'':'disabled'}>
+        ${priceState.selectedSize ? priceState.selectedSize+' のパターンを選ぶ →' : 'サイズを選択してください'}
       </button>
-    </div>
-    <div id="price-result-area"></div>`;
-  // 既に選択済みサイズがあれば候補を再表示
-  if (priceState.query && priceState.query.length >= 3) {
-    priceFilterSizes(priceState.query);
-  }
-  if (priceState.results.length > 0) renderPriceResults();
-}
+    </div>`;
 
-function priceSelectDb(key) {
-  priceState.dbKey = key;
-  priceState.results = [];
-  priceState.query = '';
-  priceState.selectedSize = '';
-  renderPriceHome();
+  if (priceState.query && priceState.query.length >= 3) priceFilterSizes(priceState.query);
 }
-
-// サイズ候補リスト（各DBが持つサイズマスタ）
-const PRICE_SIZE_MAP = {
-  'lts': ['175/75R15','185/65R15','185/75R15','195/75R15','195/85R15','205/80R15','185/70R16','185/85R16','195/85R16','205/65R16','205/70R16','225/70R16','205/75R16','205/85R16','215/85R16','225/85R16','195/60R17.5','195/70R17.5','205/60R17.5','225/60R17.5','205/70R17.5','205/80R17.5','215/70R17.5 118/116'],
-  'van': ['145/80R12 86/84','145/80R12 80/78','145R12 6P','145R12 8P','155R12 8P','165/80R13 90/88','165/80R13 94/93','165R13 6P','165R13 8P','145R13 6P','145R13 8P','155R13 6P','155R13 8P','175R13 8P','155/80R14 88/86','165/80R14 91/90','165/80R14 97/95','165R14 6P','165R14 8P','175/80R14 99/98','175R14 6P','175R14 8P','185/80R14 97N','185/80R14 102/10','185R14 6P','185R14 8P','195R14 8P','195/80R15 103/101','185/75R15 106/104','195/70R15 106/104','215/70R15 107/105','185/80R15 103/101','195/80R15 107/105','205/80R15 109/107'],
-  'pc': ['165/55R14','165/65R14','175/65R14','185/60R14','185/65R14','195/65R14','165/55R15','165/60R15','175/55R15','175/60R15','185/55R15','185/60R15','195/50R15','195/55R15','195/60R15','195/65R15','205/60R15','205/65R15','215/60R15','215/65R15','165/45R16','175/50R16','185/50R16','195/45R16','195/50R16','205/45R16','205/50R16','205/55R16','205/60R16','205/65R16','215/45R16','215/50R16','215/55R16','215/60R16','225/55R16','225/60R16','235/55R16'],
-  'stl': ['155/65R14','165/65R14','175/65R14','185/60R14','185/65R14','175/55R15','185/55R15','185/60R15','195/50R15','195/55R15','195/60R15','195/65R15','205/65R15','215/65R15','175/55R16','195/55R16','205/55R16','205/60R16','215/55R16','215/60R16','215/65R16','225/60R16','225/65R16','145R12','155R12','165R13','175R13','155/80R14','165/80R14','175/80R14','185/80R14','185R14','195R14','195/80R15','205/80R15']
-};
 
 function priceInputNormalize(el) {
   let v = el.value;
-  // 全角→半角変換
   v = v.replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
   v = v.replace(/[／]/g, '/').replace(/[．]/g, '.').replace(/　/g, ' ');
-  // 大文字統一
   v = v.toUpperCase();
   if (el.value !== v) {
     const pos = el.selectionStart;
@@ -851,15 +890,8 @@ function priceInputNormalize(el) {
   priceFilterSizes(v);
 }
 
-// サイズ正規化：195、22580、22580R17、225/80R17.5 などを統一比較用に変換
-function normalizeSizeQuery(q) {
-  // スラッシュ・Rを省いた数字列にする
-  return q.replace(/[\/R\.]/gi, '').replace(/\s/g, '').toUpperCase();
-}
-
-function normalizeSizeStr(s) {
-  return s.replace(/[\/R\.]/gi, '').replace(/\s/g, '').toUpperCase();
-}
+function normalizeSizeQuery(q) { return q.replace(/[\/R\.]/gi,'').replace(/\s/g,'').toUpperCase(); }
+function normalizeSizeStr(s)   { return s.replace(/[\/R\.]/gi,'').replace(/\s/g,'').toUpperCase(); }
 
 function priceFilterSizes(v) {
   priceState.query = v;
@@ -871,6 +903,7 @@ function priceFilterSizes(v) {
     c.innerHTML = q.length > 0
       ? `<div style="text-align:center;padding:8px;font-size:12px;color:var(--muted);">あと${3-q.length}文字入力してください</div>`
       : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'サイズを選択してください'; }
     return;
   }
   const sizes = PRICE_SIZE_MAP[priceState.dbKey] || [];
@@ -880,10 +913,9 @@ function priceFilterSizes(v) {
     return ns.includes(nq) || s.toUpperCase().includes(q.replace(/\s/g,''));
   }).slice(0, 10);
   if (hits.length === 0) {
-    c.innerHTML = `<div style="text-align:center;padding:8px;font-size:12px;color:var(--muted);">候補なし — 全件検索するには検索ボタンを押してください</div>`;
-    // 入力値でそのまま検索できるようにボタンは有効化
+    c.innerHTML = `<div style="text-align:center;padding:8px;font-size:12px;color:var(--muted);">候補なし — そのまま検索できます</div>`;
     priceState.selectedSize = q;
-    if (btn) { btn.disabled = false; btn.textContent = `🔍 「${q}」で検索`; }
+    if (btn) { btn.disabled = false; btn.textContent = `「${q}」のパターンを選ぶ →`; }
     return;
   }
   c.innerHTML = hits.map(s =>
@@ -892,6 +924,10 @@ function priceFilterSizes(v) {
       <span class="candidate-badge">選択</span>
     </div>`
   ).join('');
+  if (priceState.selectedSize && hits.includes(priceState.selectedSize) && btn) {
+    btn.disabled = false;
+    btn.textContent = `${priceState.selectedSize} のパターンを選ぶ →`;
+  }
 }
 
 function pricePickSize(s) {
@@ -900,51 +936,46 @@ function pricePickSize(s) {
   const inp = document.getElementById('price-search-inp');
   if (inp) inp.value = s;
   const c = document.getElementById('price-size-candidates');
-  if (c) {
-    // 選択状態を反映
-    c.querySelectorAll('.candidate').forEach(el => {
-      el.classList.toggle('sel', el.querySelector('.candidate-text').textContent === s);
-    });
-  }
+  if (c) c.querySelectorAll('.candidate').forEach(el => {
+    el.classList.toggle('sel', el.querySelector('.candidate-text').textContent === s);
+  });
   const btn = document.getElementById('price-search-btn');
-  if (btn) { btn.disabled = false; btn.textContent = `🔍 ${s} を検索`; }
+  if (btn) { btn.disabled = false; btn.textContent = `${s} のパターンを選ぶ →`; }
 }
 
 function priceClearSearch() {
   priceState.query = '';
   priceState.selectedSize = '';
+  priceState.step = 'search';
+  priceState.patternRows = [];
+  priceState.selectedPattern = '';
   priceState.results = [];
-  const inp = document.getElementById('price-search-inp');
-  if (inp) inp.value = '';
-  const c = document.getElementById('price-size-candidates');
-  if (c) c.innerHTML = '';
-  const btn = document.getElementById('price-search-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'サイズを選択してください'; }
-  const area = document.getElementById('price-result-area');
-  if (area) area.innerHTML = '';
+  priceState.estOpen = {};
+  priceState.estPct = {};
+  renderPriceHome();
 }
 
-async function priceSearch() {
+// ─── STEP1→2: Notionからサイズで絞り込み → パターン選択へ ──────────────────
+async function priceGoPattern() {
   if (priceState.loading) return;
   const sz = priceState.selectedSize || priceState.query;
   if (!sz) return;
   priceState.loading = true;
-  const area = document.getElementById('price-result-area');
-  if (area) area.innerHTML = `
-    <div class="loading-wrap">
-      <div class="spinner"></div>
-      <div class="loading-text">価格データを取得中…</div>
+
+  const el = document.getElementById('price-content');
+  el.innerHTML = `
+    <div class="content">
+      <div class="loading-wrap">
+        <div class="spinner"></div>
+        <div class="loading-text">パターンデータを取得中…</div>
+      </div>
     </div>`;
 
   const db = PRICE_DB_MAP[priceState.dbKey];
-
   try {
-    let all = [], cursor = undefined;
+    let all = [], cursor;
     while (true) {
-      const body = {
-        filter: { property: 'サイズ', rich_text: { contains: sz } },
-        page_size: 100
-      };
+      const body = { filter: { property: 'サイズ', rich_text: { contains: sz } }, page_size: 100 };
       if (cursor) body.start_cursor = cursor;
       const res = await notionAPI('POST', `/databases/${db.id}/query`, body);
       if (res.object === 'error') throw new Error(res.message);
@@ -952,117 +983,283 @@ async function priceSearch() {
       if (!res.has_more) break;
       cursor = res.next_cursor;
     }
-    let rows = all.map(r => {
-      const props = r.properties;
+    priceState.patternRows = all.map(r => {
+      const p = r.properties;
       return {
         id: r.id,
-        name: props['レコード名']?.title?.[0]?.plain_text || '',
-        size: props['サイズ']?.rich_text?.[0]?.plain_text || '',
-        pattern: props['パターン']?.select?.name || '',
-        maker: props['メーカー']?.select?.name || '',
-        cat: props['カテゴリ']?.select?.name || '',
-        price: props['価格']?.number ?? null,
-        note: props['備考']?.rich_text?.[0]?.plain_text || '',
-        weight: props['加重指数']?.rich_text?.[0]?.plain_text || '',
+        size:    p['サイズ']?.rich_text?.[0]?.plain_text || '',
+        pattern: p['パターン']?.select?.name || '',
+        maker:   p['メーカー']?.select?.name || '',
+        cat:     p['カテゴリ']?.select?.name || '',
+        price:   p['価格']?.number ?? null,
+        note:    p['備考']?.rich_text?.[0]?.plain_text || '',
+        weight:  p['加重指数']?.rich_text?.[0]?.plain_text || '',
       };
     });
-    // 価格なし（null）は末尾に
-    rows.sort((a, b) => {
-      if (a.price === null && b.price === null) return 0;
-      if (a.price === null) return 1;
-      if (b.price === null) return -1;
-      return a.price - b.price;
-    });
-    priceState.results = rows;
     priceState.loading = false;
-    renderPriceResults();
+    priceState.step = 'pattern';
+    priceState.selectedPattern = '';
+    renderPricePatternStep();
   } catch(e) {
     priceState.loading = false;
-    if (area) area.innerHTML = `
+    el.innerHTML = `
       <div class="content">
         <div class="error-box">取得に失敗しました。<br><small>${e.message}</small></div>
-        <button class="btn-secondary" onclick="priceSearch()">再試行</button>
+        <button class="btn-secondary" onclick="priceState.step='search';renderPriceHome()">← 戻る</button>
       </div>`;
   }
 }
 
-function priceSortRows(rows, sortBy) {
-  const s = [...rows];
-  if (sortBy === 'price_asc')  return s.sort((a,b) => { if(a.price===null)return 1; if(b.price===null)return -1; return a.price-b.price; });
-  if (sortBy === 'price_desc') return s.sort((a,b) => { if(a.price===null)return 1; if(b.price===null)return -1; return b.price-a.price; });
-  if (sortBy === 'size')       return s.sort((a,b) => a.size.localeCompare(b.size));
-  if (sortBy === 'pattern')    return s.sort((a,b) => a.pattern.localeCompare(b.pattern));
-  return s;
-}
-
-function priceChangeSort(v) {
-  priceState.sortBy = v;
-  renderPriceResults();
-}
-
-function renderPriceResults() {
-  const area = document.getElementById('price-result-area');
-  if (!area) return;
-  const rows = priceSortRows(priceState.results, priceState.sortBy);
-  const withPrice = rows.filter(r => r.price !== null);
-  const minP = withPrice.length ? Math.min(...withPrice.map(r=>r.price)) : null;
-  const avgP = withPrice.length ? Math.round(withPrice.reduce((s,r)=>s+r.price,0)/withPrice.length) : null;
-
-  let statsHtml = '';
-  if (withPrice.length > 0) {
-    statsHtml = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 20px 12px;">
-      <div style="background:var(--s2);border-radius:8px;padding:10px 12px;">
-        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">最安値</div>
-        <div style="font-size:16px;font-weight:900;color:var(--accent);">¥${minP.toLocaleString()}</div>
-      </div>
-      <div style="background:var(--s2);border-radius:8px;padding:10px 12px;">
-        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">平均価格</div>
-        <div style="font-size:16px;font-weight:900;color:var(--text);">¥${avgP.toLocaleString()}</div>
-      </div>
-    </div>`;
-  }
-
-  if (rows.length === 0) {
-    area.innerHTML = statsHtml + `<div class="price-empty">該当するタイヤが見つかりません</div>`;
-    return;
-  }
-
-  let html = statsHtml + `
-    <div class="price-result-list">
-      <div class="price-count-bar">
-        <span class="price-count-text">${rows.length} 件</span>
-        <select class="price-sort-sel" onchange="priceChangeSort(this.value)">
-          <option value="price_asc"${priceState.sortBy==='price_asc'?' selected':''}>価格：安い順</option>
-          <option value="price_desc"${priceState.sortBy==='price_desc'?' selected':''}>価格：高い順</option>
-          <option value="size"${priceState.sortBy==='size'?' selected':''}>サイズ順</option>
-          <option value="pattern"${priceState.sortBy==='pattern'?' selected':''}>パターン順</option>
-        </select>
-      </div>`;
-
+// ─── STEP2: パターン選択画面 ─────────────────────────────────────────────────
+function renderPricePatternStep() {
+  const rows = priceState.patternRows;
+  // パターン×メーカーのユニーク一覧（価格の最安値も表示）
+  const patMap = {};
   rows.forEach(r => {
-    const priceHtml = r.price !== null
-      ? `<div class="price-val">¥${r.price.toLocaleString()}</div><div class="price-val-label">税別 / 1本</div>`
-      : `<div class="price-val" style="font-size:13px;color:var(--muted);">要確認</div>`;
-    html += `
-      <div class="price-card">
-        <div class="price-card-head">
-          <div>
-            <div class="price-pattern">${r.pattern || r.name}</div>
-            ${r.size ? `<div class="price-size" style="margin-top:3px;">${r.size}</div>` : ''}
-          </div>
-          <div style="text-align:right;">${priceHtml}</div>
-        </div>
-        <div class="price-meta">
-          ${r.maker ? `<span class="price-tag price-tag-maker">${r.maker}</span>` : ''}
-          ${r.cat ? `<span class="price-tag price-tag-cat">${r.cat}</span>` : ''}
-          ${r.weight ? `<span style="font-size:10px;color:var(--muted);">${r.weight}</span>` : ''}
-        </div>
-        ${r.note ? `<div class="price-note">${r.note}</div>` : ''}
-      </div>`;
+    const key = r.pattern + '|' + r.maker;
+    if (!patMap[key]) patMap[key] = { pattern: r.pattern, maker: r.maker, minPrice: r.price };
+    else if (r.price !== null && (patMap[key].minPrice === null || r.price < patMap[key].minPrice)) {
+      patMap[key].minPrice = r.price;
+    }
   });
-  html += `</div>`;
-  area.innerHTML = html;
+  const pats = Object.values(patMap).sort((a,b) => a.pattern.localeCompare(b.pattern));
+
+  const el = document.getElementById('price-content');
+  el.innerHTML = `
+    <div class="price-search-wrap">
+      <button class="btn-secondary" style="margin-bottom:12px;margin-top:4px;" onclick="priceState.step='search';renderPriceHome()">
+        ← ${priceState.selectedSize} を変更
+      </button>
+      <div class="screen-label">パターンを選択</div>
+      <div style="font-size:20px;font-weight:900;font-family:'DM Mono',monospace;color:var(--accent);margin-bottom:14px;letter-spacing:-0.02em;">
+        ${priceState.selectedSize}
+      </div>
+      <div class="pattern-list">
+        ${pats.length === 0
+          ? `<div class="price-empty">該当するパターンが見つかりません</div>`
+          : pats.map(p => {
+              const key = p.pattern+'|'+p.maker;
+              const sel = priceState.selectedPattern === key;
+              return `
+              <div class="pattern-item${sel?' sel':''}" onclick="pricePickPattern('${key.replace(/'/g,"\\'")}')">
+                <div class="pattern-dot"></div>
+                <div>
+                  <div class="pattern-name">${p.pattern}</div>
+                  <div style="font-size:11px;color:var(--muted);margin-top:2px;">${p.maker}</div>
+                </div>
+                <div style="margin-left:auto;text-align:right;flex-shrink:0;">
+                  ${p.minPrice !== null
+                    ? `<div style="font-size:14px;font-weight:700;color:var(--accent);">¥${p.minPrice.toLocaleString()}</div>
+                       <div style="font-size:9px;color:var(--muted);">A表〜</div>`
+                    : `<div style="font-size:12px;color:var(--muted);">要確認</div>`
+                  }
+                </div>
+              </div>`;
+            }).join('')
+        }
+      </div>
+      <button class="btn-primary" id="price-pattern-btn" style="margin-top:8px;"
+        onclick="priceGoResult()" ${priceState.selectedPattern?'':'disabled'}>
+        ${priceState.selectedPattern
+          ? priceState.selectedPattern.split('|')[0]+' の価格を見る →'
+          : 'パターンを選択してください'}
+      </button>
+    </div>`;
+}
+
+function pricePickPattern(key) {
+  priceState.selectedPattern = key;
+  // 選択状態を更新
+  document.querySelectorAll('.pattern-item').forEach(el => el.classList.remove('sel'));
+  event.currentTarget.classList.add('sel');
+  const patName = key.split('|')[0];
+  const btn = document.getElementById('price-pattern-btn');
+  if (btn) { btn.disabled = false; btn.textContent = `${patName} の価格を見る →`; }
+}
+
+// ─── STEP2→3: パターン選択後に絞り込み結果表示 ──────────────────────────────
+function priceGoResult() {
+  if (!priceState.selectedPattern) return;
+  const [pat, maker] = priceState.selectedPattern.split('|');
+  priceState.results = priceState.patternRows.filter(r => r.pattern === pat && r.maker === maker);
+  priceState.results.sort((a,b) => {
+    if (a.price===null) return 1; if (b.price===null) return -1;
+    return a.price - b.price;
+  });
+  priceState.step = 'result';
+  priceState.estOpen = {};
+  priceState.estPct = {};
+  renderPriceResultStep();
+}
+
+// ─── STEP3: 結果 + 見積もり ──────────────────────────────────────────────────
+function renderPriceResultStep() {
+  const rows = priceState.results;
+  const el = document.getElementById('price-content');
+
+  let cardsHtml = rows.map((r, idx) => buildPriceCard(r, idx)).join('');
+
+  el.innerHTML = `
+    <div class="price-search-wrap" style="padding-bottom:0;">
+      <button class="btn-secondary" style="margin-bottom:12px;margin-top:4px;" onclick="priceState.step='pattern';renderPricePatternStep()">
+        ← パターン選択に戻る
+      </button>
+      <div class="screen-label">検索結果</div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px;">
+        <span style="font-size:20px;font-weight:900;font-family:'DM Mono',monospace;color:var(--accent);letter-spacing:-0.02em;">${priceState.selectedSize}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--text);">${priceState.selectedPattern.split('|')[0]}</span>
+        <span style="font-size:11px;color:var(--muted);">${rows.length}件</span>
+      </div>
+    </div>
+    <div class="price-result-list" id="price-cards-area">
+      ${cardsHtml}
+    </div>`;
+}
+
+function buildPriceCard(r, idx) {
+  const cardId = 'pc' + idx;
+  const isOpen = !!priceState.estOpen[cardId];
+  const pct = priceState.estPct[cardId] || 100;
+  const pctList = [70,75,80,85,90,95,100];
+
+  const pctTabsHtml = pctList.map(p => {
+    const val = r.price !== null ? Math.round(r.price * p / 100) : null;
+    return `<div class="pct-tab${pct===p?' active':''}" onclick="priceSetPct('${cardId}',${p},${r.price ?? 'null'})">
+      <div style="font-size:11px;font-weight:700;">${p===100?'A表':p+'%'}</div>
+      <div style="font-size:10px;margin-top:1px;opacity:0.85;">${val!==null?'¥'+val.toLocaleString():'-'}</div>
+    </div>`;
+  }).join('');
+
+  const priceDisplay = r.price !== null
+    ? `¥${r.price.toLocaleString()}`
+    : '要確認';
+
+  return `
+  <div class="price-card" id="${cardId}" style="cursor:pointer;">
+    <div onclick="priceToggleEst('${cardId}',${r.price ?? 'null'})">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-size:22px;font-weight:900;font-family:'DM Mono',monospace;color:var(--text);letter-spacing:-0.02em;line-height:1.1;">${r.size}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:5px;">
+            <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(240,165,0,0.12);color:var(--accent);">${r.pattern}</span>
+            <span style="font-size:11px;color:var(--muted);">${r.maker}</span>
+          </div>
+          ${r.weight ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">${r.weight}</div>` : ''}
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:12px;">
+          <div style="font-size:19px;font-weight:900;color:var(--accent);font-family:'DM Mono',monospace;">${priceDisplay}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">${r.price!==null?'A表 / 税別':''}　見積もり ↓</div>
+        </div>
+      </div>
+      ${r.note ? `<div class="price-note" style="margin-top:8px;">${r.note}</div>` : ''}
+    </div>
+
+    <div id="${cardId}-est" style="display:${isOpen?'block':'none'};">
+      <div style="height:0.5px;background:var(--border);margin:12px 0;"></div>
+      <div class="screen-label" style="margin-bottom:8px;">掛率を選択</div>
+      <div class="pct-tabs" id="${cardId}-pcts">${pctTabsHtml}</div>
+
+      <div class="screen-label" style="margin-bottom:4px;">追加項目</div>
+      <div style="display:grid;grid-template-columns:1fr 72px 64px;gap:5px;margin-bottom:4px;">
+        <div></div>
+        <div style="font-size:10px;color:var(--muted);text-align:right;">単価</div>
+        <div style="font-size:10px;color:var(--muted);text-align:right;">数量</div>
+      </div>
+      <div class="est-row">
+        <span class="est-lbl">タイヤ本数</span><div></div>
+        <input type="number" value="4" min="1" id="${cardId}-tqty" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp" style="text-align:center;">
+      </div>
+      <div class="est-row">
+        <span class="est-lbl">工賃</span>
+        <input type="number" value="3000" id="${cardId}-ku" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="4"    id="${cardId}-kq" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+      </div>
+      <div class="est-row">
+        <span class="est-lbl">廃タイヤ</span>
+        <input type="number" value="500" id="${cardId}-hu" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="4"   id="${cardId}-hq" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+      </div>
+      <div class="est-row">
+        <span class="est-lbl">出張</span>
+        <input type="number" value="0" id="${cardId}-su" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="1" id="${cardId}-sq" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+      </div>
+      <div class="est-row">
+        <input type="text" placeholder="その他（商品名）" id="${cardId}-on" class="est-inp" style="text-align:left;font-size:12px;">
+        <input type="number" value="0" id="${cardId}-ou" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="1" id="${cardId}-oq" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+      </div>
+
+      <div id="${cardId}-bd" style="margin:10px 0 6px;font-size:12px;"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
+        <div style="background:var(--s2);border-radius:8px;padding:10px 12px;">
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">税別合計</div>
+          <div style="font-size:18px;font-weight:900;color:var(--accent);font-family:'DM Mono',monospace;" id="${cardId}-tot">-</div>
+        </div>
+        <div style="background:var(--s2);border-radius:8px;padding:10px 12px;">
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">税込（10%）</div>
+          <div style="font-size:16px;font-weight:700;color:var(--text);font-family:'DM Mono',monospace;" id="${cardId}-tax">-</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function priceToggleEst(cardId, basePrice) {
+  const wasOpen = !!priceState.estOpen[cardId];
+  priceState.estOpen[cardId] = !wasOpen;
+  const panel = document.getElementById(cardId + '-est');
+  if (panel) panel.style.display = priceState.estOpen[cardId] ? 'block' : 'none';
+  if (priceState.estOpen[cardId]) priceCalcEst(cardId, basePrice);
+}
+
+function priceSetPct(cardId, pct, basePrice) {
+  priceState.estPct[cardId] = pct;
+  const container = document.getElementById(cardId + '-pcts');
+  if (container) {
+    container.querySelectorAll('.pct-tab').forEach((el, i) => {
+      el.classList.toggle('active', [70,75,80,85,90,95,100][i] === pct);
+    });
+  }
+  priceCalcEst(cardId, basePrice);
+}
+
+function priceEstVal(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
+function priceEstStr(id) { return document.getElementById(id)?.value || ''; }
+
+function priceCalcEst(cardId, basePrice) {
+  const pct = priceState.estPct[cardId] || 100;
+  const tireUnit = basePrice !== null ? Math.round(basePrice * pct / 100) : 0;
+  const tQty = priceEstVal(cardId+'-tqty');
+  const items = [
+    { name: `タイヤ (${pct===100?'A表':pct+'%'})`, unit: tireUnit, qty: tQty },
+    { name: '工賃',     unit: priceEstVal(cardId+'-ku'), qty: priceEstVal(cardId+'-kq') },
+    { name: '廃タイヤ', unit: priceEstVal(cardId+'-hu'), qty: priceEstVal(cardId+'-hq') },
+    { name: '出張',     unit: priceEstVal(cardId+'-su'), qty: priceEstVal(cardId+'-sq') },
+  ];
+  const onName = priceEstStr(cardId+'-on') || 'その他';
+  const onUnit = priceEstVal(cardId+'-ou');
+  const onQty  = priceEstVal(cardId+'-oq');
+  if (onUnit > 0) items.push({ name: onName, unit: onUnit, qty: onQty });
+
+  let total = 0, bdHtml = '';
+  items.forEach(it => {
+    const sub = it.unit * it.qty;
+    if (sub === 0) return;
+    total += sub;
+    bdHtml += `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:0.5px solid var(--border);">
+      <span style="color:var(--muted);">${it.name} × ${it.qty}</span>
+      <span>¥${sub.toLocaleString()}</span>
+    </div>`;
+  });
+
+  const bd  = document.getElementById(cardId+'-bd');
+  const tot = document.getElementById(cardId+'-tot');
+  const tax = document.getElementById(cardId+'-tax');
+  if (bd)  bd.innerHTML  = bdHtml;
+  if (tot) tot.textContent = '¥' + total.toLocaleString();
+  if (tax) tax.textContent = '¥' + Math.round(total * 1.1).toLocaleString();
 }
 
 // ─── Tab ─────────────────────────────────────────────────────────────────────
