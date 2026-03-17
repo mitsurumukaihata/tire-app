@@ -569,7 +569,15 @@ body {
 <!-- App -->
 <div id="app">
   <div class="header">
-    <div class="header-brand">Tire Manager f.o.o</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+      <div class="header-brand">Tire Manager f.o.o</div>
+      <a href="https://mitsurumukaihata.github.io/foo-portal/"
+        style="font-size:11px;color:var(--muted);text-decoration:none;display:flex;align-items:center;gap:3px;padding:3px 8px;border:0.5px solid var(--border);border-radius:20px;transition:border-color 0.15s;"
+        onmouseover="this.style.borderColor='var(--border2)'"
+        onmouseout="this.style.borderColor='var(--border)'">
+        ← ポータル
+      </a>
+    </div>
     <div class="header-title">タイヤ<span>入出庫</span></div>
   </div>
   <div class="nav">
@@ -2351,6 +2359,27 @@ function renderStockResult(size, catKey, records) {
 // ─── 初期化 ──────────────────────────────────────────────────────────────────
 
 window.onload = () => {
+  // ── ポータルセッションを優先参照 ──────────────────────────────────────────
+  // ポータルでログイン済みなら社員選択をスキップして即起動
+  try {
+    const raw = localStorage.getItem('foo_portal_session');
+    if (raw) {
+      const session = JSON.parse(raw);
+      if (session && new Date(session.expires) > new Date() && session.name) {
+        _selectedStaff = session.name;
+        USER_NAME = session.name;
+        // セッションの最終アクセス日を更新（30日リセット）
+        const expires = new Date();
+        expires.setDate(expires.getDate() + 30);
+        session.expires = expires.toISOString();
+        localStorage.setItem('foo_portal_session', JSON.stringify(session));
+        launchApp();
+        return;
+      }
+    }
+  } catch(e) {}
+
+  // ── ポータルセッションなし → 旧来の名前保存を参照 ────────────────────────
   const n = localStorage.getItem('tire_name');
   if (n) {
     _selectedStaff = n;
