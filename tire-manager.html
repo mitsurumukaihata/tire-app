@@ -1013,7 +1013,11 @@ async function priceGoPattern() {
 // ─── STEP2: パターン選択画面 ─────────────────────────────────────────────────
 function renderPricePatternStep() {
   const rows = priceState.patternRows;
-  // パターン×メーカーのユニーク一覧（価格の最安値も表示）
+  // メーカー表示順（固定）
+  const MAKER_ORDER = ['TOYO TIRES','BRIDGESTONE','DUNLOP','YOKOHAMA'];
+  const makerLabel = { 'TOYO TIRES':'TOYO', 'BRIDGESTONE':'BS', 'DUNLOP':'DUNLOP', 'YOKOHAMA':'YOKO', 'all':'全メーカー' };
+
+  // パターン×メーカーのユニーク一覧
   const patMap = {};
   rows.forEach(r => {
     const key = r.pattern + '|' + r.maker;
@@ -1022,7 +1026,23 @@ function renderPricePatternStep() {
       patMap[key].minPrice = r.price;
     }
   });
-  const pats = Object.values(patMap).sort((a,b) => a.pattern.localeCompare(b.pattern));
+
+  // メーカーフィルター適用 → TOYO→BS→DUNLOP→YOKOの順、同メーカー内はパターン名順
+  let pats = Object.values(patMap).filter(p =>
+    priceState.makerFilter === 'all' || p.maker === priceState.makerFilter
+  );
+  pats.sort((a,b) => {
+    const ai = MAKER_ORDER.indexOf(a.maker); const bi = MAKER_ORDER.indexOf(b.maker);
+    const md = (ai===-1?99:ai) - (bi===-1?99:bi);
+    return md !== 0 ? md : a.pattern.localeCompare(b.pattern);
+  });
+
+  // 実際に存在するメーカーのみフィルタータブを表示
+  const makers = ['all', ...MAKER_ORDER.filter(m => Object.values(patMap).some(p => p.maker === m))];
+  const makerTabsHtml = makers.map(m =>
+    `<div class="price-db-tab${priceState.makerFilter===m?' active':''}" style="font-size:11px;"
+      onclick="pricePatternFilterMaker('${m}')">${makerLabel[m]||m}</div>`
+  ).join('');
 
   const el = document.getElementById('price-content');
   el.innerHTML = `
@@ -1031,9 +1051,10 @@ function renderPricePatternStep() {
         ← ${priceState.selectedSize} を変更
       </button>
       <div class="screen-label">パターンを選択</div>
-      <div style="font-size:20px;font-weight:900;font-family:'DM Mono',monospace;color:var(--accent);margin-bottom:14px;letter-spacing:-0.02em;">
+      <div style="font-size:20px;font-weight:900;font-family:'DM Mono',monospace;color:var(--accent);margin-bottom:10px;letter-spacing:-0.02em;">
         ${priceState.selectedSize}
       </div>
+      <div class="price-db-tabs" style="margin-bottom:12px;">${makerTabsHtml}</div>
       <div class="pattern-list">
         ${pats.length === 0
           ? `<div class="price-empty">該当するパターンが見つかりません</div>`
@@ -1065,6 +1086,12 @@ function renderPricePatternStep() {
           : 'パターンを選択してください'}
       </button>
     </div>`;
+}
+
+function pricePatternFilterMaker(maker) {
+  priceState.makerFilter = maker;
+  priceState.selectedPattern = '';
+  renderPricePatternStep();
 }
 
 function pricePickPattern(key) {
@@ -1167,27 +1194,32 @@ function buildPriceCard(r, idx) {
       </div>
       <div class="est-row">
         <span class="est-lbl">タイヤ本数</span><div></div>
-        <input type="number" value="4" min="1" id="${cardId}-tqty" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp" style="text-align:center;">
+        <input type="number" value="4" min="1" id="${cardId}-tqty" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp" style="text-align:center;">
       </div>
       <div class="est-row">
         <span class="est-lbl">工賃</span>
-        <input type="number" value="3000" id="${cardId}-ku" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
-        <input type="number" value="4"    id="${cardId}-kq" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="3000" id="${cardId}-ku" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="4"    id="${cardId}-kq" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
       </div>
       <div class="est-row">
         <span class="est-lbl">廃タイヤ</span>
-        <input type="number" value="500" id="${cardId}-hu" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
-        <input type="number" value="4"   id="${cardId}-hq" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="500" id="${cardId}-hu" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="4"   id="${cardId}-hq" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
       </div>
       <div class="est-row">
         <span class="est-lbl">出張</span>
-        <input type="number" value="0" id="${cardId}-su" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
-        <input type="number" value="1" id="${cardId}-sq" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="0" id="${cardId}-su" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="1" id="${cardId}-sq" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
       </div>
       <div class="est-row">
-        <input type="text" placeholder="その他（商品名）" id="${cardId}-on" class="est-inp" style="text-align:left;font-size:12px;">
-        <input type="number" value="0" id="${cardId}-ou" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
-        <input type="number" value="1" id="${cardId}-oq" oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="text" placeholder="その他1（商品名）" id="${cardId}-o1n" class="est-inp" style="text-align:left;font-size:12px;">
+        <input type="number" value="0" id="${cardId}-o1u" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="1" id="${cardId}-o1q" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+      </div>
+      <div class="est-row">
+        <input type="text" placeholder="その他2（商品名）" id="${cardId}-o2n" class="est-inp" style="text-align:left;font-size:12px;">
+        <input type="number" value="0" id="${cardId}-o2u" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input type="number" value="1" id="${cardId}-o2q" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
       </div>
 
       <div id="${cardId}-bd" style="margin:10px 0 6px;font-size:12px;"></div>
@@ -1225,6 +1257,13 @@ function priceSetPct(cardId, pct, basePrice) {
   priceCalcEst(cardId, basePrice);
 }
 
+function priceNumNorm(el) {
+  // 全角数字→半角変換
+  let v = el.value.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  v = v.replace(/[^0-9.\-]/g, '');
+  if (el.value !== v) el.value = v;
+}
+
 function priceEstVal(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 function priceEstStr(id) { return document.getElementById(id)?.value || ''; }
 
@@ -1238,10 +1277,14 @@ function priceCalcEst(cardId, basePrice) {
     { name: '廃タイヤ', unit: priceEstVal(cardId+'-hu'), qty: priceEstVal(cardId+'-hq') },
     { name: '出張',     unit: priceEstVal(cardId+'-su'), qty: priceEstVal(cardId+'-sq') },
   ];
-  const onName = priceEstStr(cardId+'-on') || 'その他';
-  const onUnit = priceEstVal(cardId+'-ou');
-  const onQty  = priceEstVal(cardId+'-oq');
-  if (onUnit > 0) items.push({ name: onName, unit: onUnit, qty: onQty });
+  const o1Name = priceEstStr(cardId+'-o1n') || 'その他1';
+  const o1Unit = priceEstVal(cardId+'-o1u');
+  const o1Qty  = priceEstVal(cardId+'-o1q');
+  if (o1Unit > 0) items.push({ name: o1Name, unit: o1Unit, qty: o1Qty });
+  const o2Name = priceEstStr(cardId+'-o2n') || 'その他2';
+  const o2Unit = priceEstVal(cardId+'-o2u');
+  const o2Qty  = priceEstVal(cardId+'-o2q');
+  if (o2Unit > 0) items.push({ name: o2Name, unit: o2Unit, qty: o2Qty });
 
   let total = 0, bdHtml = '';
   items.forEach(it => {
