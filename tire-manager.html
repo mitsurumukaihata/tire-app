@@ -1148,6 +1148,7 @@ function buildPriceCard(r, idx) {
   const isOpen = !!priceState.estOpen[cardId];
   const pct = priceState.estPct[cardId] || 100;
   const pctList = [70,75,80,85,90,95,100];
+  const CP = '${cardId}'; // テンプレート用
 
   const pctTabsHtml = pctList.map(p => {
     const val = r.price !== null ? Math.round(r.price * p / 100) : null;
@@ -1157,12 +1158,38 @@ function buildPriceCard(r, idx) {
     </div>`;
   }).join('');
 
-  const priceDisplay = r.price !== null
-    ? `¥${r.price.toLocaleString()}`
-    : '要確認';
+  // 選択中の掛率ラベルと金額（カード外枠の上に表示）
+  const curPctVal = r.price !== null ? Math.round(r.price * pct / 100) : null;
+  const pctBadgeHtml = isOpen ? `
+    <div style="display:flex;justify-content:space-between;align-items:center;
+      background:var(--s3);border-radius:8px 8px 0 0;padding:6px 14px;
+      margin:-1px -1px 0 -1px;border:1px solid var(--border);">
+      <span style="font-size:11px;color:var(--muted);">${pct===100?'A表':pct+'%'} 適用中</span>
+      <span style="font-size:13px;font-weight:700;color:var(--accent);font-family:'DM Mono',monospace;">
+        ${curPctVal!==null?'¥'+curPctVal.toLocaleString():'要確認'} / 本
+      </span>
+    </div>` : '';
+
+  // num入力共通属性（type=text でコンマ表示・削除しやすく）
+  const numAttr = (id, val) =>
+    `id="${cardId}-${id}" type="text" inputmode="decimal"
+     value="${val}"
+     onfocus="priceNumFocus(this)"
+     onblur="priceNumBlur(this,'${cardId}',${r.price ?? 'null'})"
+     oninput="priceNumInput(this,'${cardId}',${r.price ?? 'null'})"
+     class="est-inp"`;
+
+  const qtyAttr = (id, val) =>
+    `id="${cardId}-${id}" type="text" inputmode="numeric"
+     value="${val}"
+     onfocus="priceNumFocus(this)"
+     onblur="priceNumBlur(this,'${cardId}',${r.price ?? 'null'})"
+     oninput="priceNumInput(this,'${cardId}',${r.price ?? 'null'})"
+     class="est-inp"`;
 
   return `
-  <div class="price-card" id="${cardId}" style="cursor:pointer;">
+  ${pctBadgeHtml}
+  <div class="price-card" id="${cardId}" style="cursor:pointer;${isOpen?'border-radius:0 0 10px 10px;':''}">
     <div onclick="priceToggleEst('${cardId}',${r.price ?? 'null'})">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
         <div>
@@ -1174,8 +1201,9 @@ function buildPriceCard(r, idx) {
           ${r.weight ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">${r.weight}</div>` : ''}
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:12px;">
-          <div style="font-size:19px;font-weight:900;color:var(--accent);font-family:'DM Mono',monospace;">${priceDisplay}</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:3px;">${r.price!==null?'A表 / 税別':''}　見積もり ↓</div>
+          ${isOpen
+            ? `<div style="font-size:12px;color:var(--muted);">見積もり 閉じる ↑</div>`
+            : `<div style="font-size:10px;color:var(--muted);">見積もり ↓</div>`}
         </div>
       </div>
       ${r.note ? `<div class="price-note" style="margin-top:8px;">${r.note}</div>` : ''}
@@ -1187,40 +1215,46 @@ function buildPriceCard(r, idx) {
       <div class="pct-tabs" id="${cardId}-pcts">${pctTabsHtml}</div>
 
       <div class="screen-label" style="margin-bottom:4px;">追加項目</div>
-      <div style="display:grid;grid-template-columns:1fr 72px 64px;gap:5px;margin-bottom:4px;">
+      <div style="display:grid;grid-template-columns:1fr 80px 64px;gap:5px;margin-bottom:4px;">
         <div></div>
         <div style="font-size:10px;color:var(--muted);text-align:right;">単価</div>
         <div style="font-size:10px;color:var(--muted);text-align:right;">数量</div>
       </div>
       <div class="est-row">
-        <span class="est-lbl">タイヤ本数</span><div></div>
-        <input type="number" value="4" min="1" id="${cardId}-tqty" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp" style="text-align:center;">
+        <span class="est-lbl">タイヤ本数</span>
+        <div></div>
+        <input ${qtyAttr('tqty','4')} style="text-align:right;">
       </div>
       <div class="est-row">
         <span class="est-lbl">工賃</span>
-        <input type="number" value="3000" id="${cardId}-ku" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
-        <input type="number" value="4"    id="${cardId}-kq" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input ${numAttr('ku','3,000')}>
+        <input ${qtyAttr('kq','4')}>
       </div>
       <div class="est-row">
         <span class="est-lbl">廃タイヤ</span>
-        <input type="number" value="500" id="${cardId}-hu" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
-        <input type="number" value="4"   id="${cardId}-hq" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input ${numAttr('hu','500')}>
+        <input ${qtyAttr('hq','4')}>
       </div>
       <div class="est-row">
         <span class="est-lbl">出張</span>
-        <input type="number" value="0" id="${cardId}-su" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
-        <input type="number" value="1" id="${cardId}-sq" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input ${numAttr('su','0')}>
+        <input ${qtyAttr('sq','1')}>
       </div>
       <div class="est-row">
         <input type="text" placeholder="その他1（商品名）" id="${cardId}-o1n" class="est-inp" style="text-align:left;font-size:12px;">
-        <input type="number" value="0" id="${cardId}-o1u" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
-        <input type="number" value="1" id="${cardId}-o1q" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input ${numAttr('o1u','0')}>
+        <input ${qtyAttr('o1q','1')}>
       </div>
       <div class="est-row">
         <input type="text" placeholder="その他2（商品名）" id="${cardId}-o2n" class="est-inp" style="text-align:left;font-size:12px;">
-        <input type="number" value="0" id="${cardId}-o2u" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
-        <input type="number" value="1" id="${cardId}-o2q" inputmode="numeric" oninput="priceNumNorm(this);priceCalcEst('${cardId}',${r.price ?? 'null'})" class="est-inp">
+        <input ${numAttr('o2u','0')}>
+        <input ${qtyAttr('o2q','1')}>
       </div>
+
+      <div class="screen-label" style="margin-top:10px;margin-bottom:4px;">備考</div>
+      <textarea id="${cardId}-memo" placeholder="お客様へのメモ・特記事項など"
+        class="memo-input" style="min-height:60px;font-size:13px;"
+        oninput="priceCalcEst('${cardId}',${r.price ?? 'null'})"></textarea>
 
       <div id="${cardId}-bd" style="margin:10px 0 6px;font-size:12px;"></div>
 
@@ -1241,9 +1275,12 @@ function buildPriceCard(r, idx) {
 function priceToggleEst(cardId, basePrice) {
   const wasOpen = !!priceState.estOpen[cardId];
   priceState.estOpen[cardId] = !wasOpen;
-  const panel = document.getElementById(cardId + '-est');
-  if (panel) panel.style.display = priceState.estOpen[cardId] ? 'block' : 'none';
-  if (priceState.estOpen[cardId]) priceCalcEst(cardId, basePrice);
+  // 開閉でバッジ・カードを再描画（掛率表示の出し入れ）
+  renderPriceResultStep();
+  if (priceState.estOpen[cardId]) {
+    // 再描画後に計算（少し待つ）
+    setTimeout(() => priceCalcEst(cardId, basePrice), 30);
+  }
 }
 
 function priceSetPct(cardId, pct, basePrice) {
@@ -1257,15 +1294,46 @@ function priceSetPct(cardId, pct, basePrice) {
   priceCalcEst(cardId, basePrice);
 }
 
-function priceNumNorm(el) {
-  // 全角数字→半角変換
-  let v = el.value.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
-  v = v.replace(/[^0-9.\-]/g, '');
-  if (el.value !== v) el.value = v;
+// ── 数値入力ハンドラ ────────────────────────────────────────────────────────
+
+// コンマなし数値を取得
+function priceEstVal(id) {
+  const el = document.getElementById(id);
+  if (!el) return 0;
+  const v = el.value.replace(/,/g, '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  return parseFloat(v) || 0;
+}
+function priceEstStr(id) { return document.getElementById(id)?.value || ''; }
+
+// フォーカス時：コンマを除去して数字だけにする（編集しやすく）
+function priceNumFocus(el) {
+  const v = el.value.replace(/,/g, '');
+  el.value = v;
+  el.select(); // 全選択で上書きしやすく
 }
 
-function priceEstVal(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
-function priceEstStr(id) { return document.getElementById(id)?.value || ''; }
+// blur時：単価フィールドのみコンマ付きで再表示
+function priceNumBlur(el, cardId, basePrice) {
+  const v = el.value.replace(/,/g, '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  const n = parseFloat(v);
+  // 単価フィールドかどうか（末尾が u か tqty でないか）
+  const isUnit = el.id && !el.id.endsWith('q') || el.id.endsWith('tqty') === false && el.id.match(/u$/);
+  if (!isNaN(n) && n > 0 && el.id && el.id.match(/-(ku|hu|su|o1u|o2u)$/)) {
+    el.value = n.toLocaleString(); // コンマ付き
+  } else if (!isNaN(n)) {
+    el.value = n === 0 ? '0' : String(n);
+  }
+  priceCalcEst(cardId, basePrice);
+}
+
+// input時：全角→半角変換のみ（コンマ表示はblurで）
+function priceNumInput(el, cardId, basePrice) {
+  let v = el.value;
+  v = v.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  v = v.replace(/[^0-9,]/g, '');
+  if (el.value !== v) el.value = v;
+  priceCalcEst(cardId, basePrice);
+}
 
 function priceCalcEst(cardId, basePrice) {
   const pct = priceState.estPct[cardId] || 100;
@@ -1303,6 +1371,19 @@ function priceCalcEst(cardId, basePrice) {
   if (bd)  bd.innerHTML  = bdHtml;
   if (tot) tot.textContent = '¥' + total.toLocaleString();
   if (tax) tax.textContent = '¥' + Math.round(total * 1.1).toLocaleString();
+
+  // 掛率バッジも更新
+  priceUpdatePctBadge(cardId, basePrice, pct);
+}
+
+function priceUpdatePctBadge(cardId, basePrice, pct) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const badge = card.previousElementSibling;
+  if (!badge || !badge.style.background) return;
+  const val = basePrice !== null ? Math.round(basePrice * pct / 100) : null;
+  const label = badge.querySelector('span:last-child');
+  if (label) label.textContent = (val !== null ? '¥' + val.toLocaleString() : '要確認') + ' / 本';
 }
 
 // ─── Tab ─────────────────────────────────────────────────────────────────────
