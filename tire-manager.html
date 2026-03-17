@@ -462,7 +462,7 @@ body {
 .cat-sel-btn {
   background: var(--s2); border: 1.5px solid var(--border);
   border-radius: 10px; padding: 14px 12px; cursor: pointer;
-  text-align: left; transition: all 0.12s;
+  text-align: left; transition: all 0.12px;
 }
 .cat-sel-btn:active { transform: scale(0.97); }
 .cat-sel-btn .csb-icon { font-size: 18px; margin-bottom: 6px; display: block; }
@@ -728,10 +728,10 @@ let state = {};
 
 function resetState() {
   state = {
-    step: 0, // 0=size 1=cat 2=pattern 3=qty 4=kubun 5=move_dir 6=warehouse 7=confirm 8=done
+    step: 0,
     size: '', cat: '', pattern: '', qty: 0,
     kubun: '', warehouse: '', dest: '', memo: '',
-    moveDir: null, // {from, to}
+    moveDir: null,
     isMove: false
   };
 }
@@ -805,24 +805,64 @@ let priceState = {
   query: '',
   selectedSize: '',
   makerFilter: 'all',
-  // step: 'search' | 'pattern' | 'result'
   step: 'search',
-  patternRows: [],   // サイズ絞り込み後の全行（パターン選択用）
+  patternRows: [],
   selectedPattern: '',
-  results: [],       // パターン選択後の絞り込み結果
+  results: [],
   loading: false,
-  // 見積もり状態（カードIDキー）
   estOpen: {},
   estPct: {},
 };
 
-// ─── サイズ候補マスタ ────────────────────────────────────────────────────────
-const PRICE_SIZE_MAP = {
+// ─── ★修正① サイズ候補マスタ（動的取得方式）────────────────────────────────
+// lts/van/pc はフォールバック用（Notion接続失敗時）
+// stl は完全に動的取得に切り替え（ハードコードのリストは廃止）
+const PRICE_SIZE_MAP_FALLBACK = {
   'lts': ['175/75R15','185/65R15','185/75R15','195/75R15','195/85R15','205/80R15','185/70R16','185/85R16','195/85R16','205/65R16','205/70R16','225/70R16','205/75R16','205/85R16','215/85R16','225/85R16','195/60R17.5','195/70R17.5','205/60R17.5','225/60R17.5','205/70R17.5','205/80R17.5','215/70R17.5 118/116'],
   'van': ['145/80R12','145/80R13','145R12','145R13','155/80R12','155/80R13','155/80R14','155R12','155R13','155R14','165/80R13','165/80R14','165R13','165R14','175/80R14','175R13','175R14','185/80R14','185/80R15','185R14','195/70R15','195/80R14','195/80R15','195R14','205/70R15','215/70R15','215/80R15'],
   'pc': ['145/65R15','145/80R13','155/55R14','155/65R13','155/65R14','155/70R13','155/80R13','165/45R16','165/50R15','165/50R16','165/55R14','165/55R15','165/60R14','165/60R15','165/65R13','165/65R14','165/65R15','165/70R13','165/70R14','175/55R15','175/60R14','175/60R15','175/60R16','175/65R14','175/65R15','175/70R14','175/80R15','175/80R16','185/55R14','185/55R15','185/55R16','185/60R14','185/60R15','185/60R16','185/65R14','185/65R15','185/70R14','195/40R17','195/45R16','195/45R17','195/50R15','195/50R16','195/50R19','195/55R15','195/55R16','195/60R15','195/60R16','195/60R17','195/65R15','195/65R16','205/40R17'],
-  'stl': ['145/80R12','145/80R13','155/65R13','155/65R14','155/70R13','155/80R12','155/80R13','155/80R14','165/55R14','165/55R15','165/60R14','165/60R15','165/65R13','165/65R14','165/65R15','165/70R14','165/80R13','165/80R14','175/55R15','175/60R16','175/65R14','175/65R15','175/70R14','175/75R15','175/80R14','175/80R15','185/55R15','185/60R15','185/60R16','185/65R14','185/65R15','185/70R14','185/70R15.5','185/70R16','185/75R15','185/80R14','185/85R16','195/60R16','195/60R17.5','195/65R15','195/65R16','195/70R15.5','195/70R16','195/70R17.5','195/75R15','195/80R15','195/85R15','195/85R16','205/55R16','205/60R16','205/60R17.5','205/65R15','205/65R16','205/70R15','205/70R16','205/70R17.5','205/75R16','205/80R15','205/80R17.5','205/85R16','215/60R15.5','215/60R16','215/65R15','215/65R16','215/70R15','215/70R17.5','215/80R15','215/85R16','225/60R17.5','225/70R16','225/75R16','225/85R16','235/60R17','6.50R16','7.00R16']
+  'stl': []  // 完全動的取得（Notionからリアルタイム）
 };
+
+// ─── ★修正② 動的サイズキャッシュ + 取得関数 ──────────────────────────────
+// キャッシュ：一度取得したら再利用（タブ切替のたびに叩かない）
+const PRICE_SIZE_CACHE = {};
+
+// NotionDBからサイズ一覧を全件取得してキャッシュする
+// 初回のみNotionアクセス、2回目以降はキャッシュで即返る
+async function fetchPriceSizes(dbKey) {
+  if (PRICE_SIZE_CACHE[dbKey] && PRICE_SIZE_CACHE[dbKey].length > 0) {
+    return PRICE_SIZE_CACHE[dbKey];
+  }
+  const db = PRICE_DB_MAP[dbKey];
+  try {
+    const allSizes = new Set();
+    let cursor;
+    // 最大500件（5ページ）取得してユニークなサイズを収集
+    for (let page = 0; page < 5; page++) {
+      const body = { page_size: 100 };
+      if (cursor) body.start_cursor = cursor;
+      const res = await notionAPI('POST', `/databases/${db.id}/query`, body);
+      if (res.object === 'error') break;
+      res.results.forEach(r => {
+        const sz = r.properties['サイズ']?.rich_text?.[0]?.plain_text;
+        if (sz && sz.trim()) allSizes.add(sz.trim());
+      });
+      if (!res.has_more) break;
+      cursor = res.next_cursor;
+    }
+    const sorted = [...allSizes].sort((a, b) => a.localeCompare(b, 'ja', { numeric: true }));
+    PRICE_SIZE_CACHE[dbKey] = sorted;
+    return sorted;
+  } catch(e) {
+    console.warn('fetchPriceSizes fallback:', e.message);
+    return PRICE_SIZE_MAP_FALLBACK[dbKey] || [];
+  }
+}
+
+function getPriceSizesSync(dbKey) {
+  return PRICE_SIZE_CACHE[dbKey] || PRICE_SIZE_MAP_FALLBACK[dbKey] || [];
+}
 
 // ─── DB切替 ──────────────────────────────────────────────────────────────────
 function priceSelectDb(key) {
@@ -893,7 +933,8 @@ function priceInputNormalize(el) {
 function normalizeSizeQuery(q) { return q.replace(/[\/R\.]/gi,'').replace(/\s/g,'').toUpperCase(); }
 function normalizeSizeStr(s)   { return s.replace(/[\/R\.]/gi,'').replace(/\s/g,'').toUpperCase(); }
 
-function priceFilterSizes(v) {
+// ─── ★修正③ priceFilterSizes を async 化（Notionから動的取得）──────────────
+async function priceFilterSizes(v) {
   priceState.query = v;
   const q = v.trim();
   const c = document.getElementById('price-size-candidates');
@@ -906,12 +947,17 @@ function priceFilterSizes(v) {
     if (btn) { btn.disabled = true; btn.textContent = 'サイズを選択してください'; }
     return;
   }
-  const sizes = PRICE_SIZE_MAP[priceState.dbKey] || [];
+  // 初回のみローディング表示（2回目以降はキャッシュで即返る）
+  if (!PRICE_SIZE_CACHE[priceState.dbKey]) {
+    c.innerHTML = `<div style="text-align:center;padding:8px;font-size:12px;color:var(--muted);">サイズ一覧を取得中…</div>`;
+  }
+  // Notionから動的取得（キャッシュがあれば即返る）
+  const sizes = await fetchPriceSizes(priceState.dbKey);
   const nq = normalizeSizeQuery(q);
   const hits = sizes.filter(s => {
     const ns = normalizeSizeStr(s);
     return ns.includes(nq) || s.toUpperCase().includes(q.replace(/\s/g,''));
-  }).slice(0, 10);
+  }).slice(0, 15);  // 15件まで表示（サイズ数が多いため増やした）
   if (hits.length === 0) {
     c.innerHTML = `<div style="text-align:center;padding:8px;font-size:12px;color:var(--muted);">候補なし — そのまま検索できます</div>`;
     priceState.selectedSize = q;
@@ -1013,11 +1059,9 @@ async function priceGoPattern() {
 // ─── STEP2: パターン選択画面 ─────────────────────────────────────────────────
 function renderPricePatternStep() {
   const rows = priceState.patternRows;
-  // メーカー表示順（固定）
   const MAKER_ORDER = ['TOYO TIRES','BRIDGESTONE','DUNLOP','YOKOHAMA'];
   const makerLabel = { 'TOYO TIRES':'TOYO', 'BRIDGESTONE':'BS', 'DUNLOP':'DUNLOP', 'YOKOHAMA':'YOKO', 'all':'全メーカー' };
 
-  // パターン×メーカーのユニーク一覧
   const patMap = {};
   rows.forEach(r => {
     const key = r.pattern + '|' + r.maker;
@@ -1027,7 +1071,6 @@ function renderPricePatternStep() {
     }
   });
 
-  // メーカーフィルター適用 → TOYO→BS→DUNLOP→YOKOの順、同メーカー内はパターン名順
   let pats = Object.values(patMap).filter(p =>
     priceState.makerFilter === 'all' || p.maker === priceState.makerFilter
   );
@@ -1037,7 +1080,6 @@ function renderPricePatternStep() {
     return md !== 0 ? md : a.pattern.localeCompare(b.pattern);
   });
 
-  // 実際に存在するメーカーのみフィルタータブを表示
   const makers = ['all', ...MAKER_ORDER.filter(m => Object.values(patMap).some(p => p.maker === m))];
   const makerTabsHtml = makers.map(m =>
     `<div class="price-db-tab${priceState.makerFilter===m?' active':''}" style="font-size:11px;"
@@ -1096,7 +1138,6 @@ function pricePatternFilterMaker(maker) {
 
 function pricePickPattern(key) {
   priceState.selectedPattern = key;
-  // 選択状態を更新
   document.querySelectorAll('.pattern-item').forEach(el => el.classList.remove('sel'));
   event.currentTarget.classList.add('sel');
   const patName = key.split('|')[0];
@@ -1150,7 +1191,6 @@ function buildPriceCard(r, idx) {
   const pctList = [70,75,80,85,90,95,100];
   const bp = r.price ?? 'null';
 
-  // 掛率タブ
   const pctTabsHtml = pctList.map(p => {
     const val = r.price !== null ? Math.round(r.price * p / 100) : null;
     return `<div class="pct-tab${pct===p?' active':''}" onclick="priceSetPct('${cardId}',${p},${bp})">
@@ -1159,8 +1199,6 @@ function buildPriceCard(r, idx) {
     </div>`;
   }).join('');
 
-  // 掛率選択エリア：カード本体の完全外側（見積もり開いた時のみ表示）
-  // スクショ時にここだけカードを切り取れるよう意図的に外側に出す
   const curPctVal = r.price !== null ? Math.round(r.price * pct / 100) : null;
   const pctOuterHtml = isOpen ? `
     <div style="padding:0 20px 0;">
@@ -1170,7 +1208,6 @@ function buildPriceCard(r, idx) {
       </div>
     </div>` : '';
 
-  // num入力共通属性
   const numAttr = (id, val) =>
     `id="${cardId}-${id}" type="text" inputmode="decimal"
      value="${val}"
@@ -1187,7 +1224,6 @@ function buildPriceCard(r, idx) {
      oninput="priceNumInput(this,'${cardId}',${bp})"
      class="est-inp"`;
 
-  // タイヤ単価（掛率反映済み）
   const tireUnitDisp = curPctVal !== null ? curPctVal.toLocaleString() : '-';
 
   return `
@@ -1282,10 +1318,8 @@ function buildPriceCard(r, idx) {
 function priceToggleEst(cardId, basePrice) {
   const wasOpen = !!priceState.estOpen[cardId];
   priceState.estOpen[cardId] = !wasOpen;
-  // 開閉でバッジ・カードを再描画（掛率表示の出し入れ）
   renderPriceResultStep();
   if (priceState.estOpen[cardId]) {
-    // 再描画後に計算（少し待つ）
     setTimeout(() => priceCalcEst(cardId, basePrice), 30);
   }
 }
@@ -1298,7 +1332,6 @@ function priceSetPct(cardId, pct, basePrice) {
       el.classList.toggle('active', [70,75,80,85,90,95,100][i] === pct);
     });
   }
-  // タイヤ単価表示を更新
   const tunit = document.getElementById(cardId + '-tunit');
   if (tunit && basePrice !== null) {
     const val = Math.round(basePrice * pct / 100);
@@ -1307,9 +1340,6 @@ function priceSetPct(cardId, pct, basePrice) {
   priceCalcEst(cardId, basePrice);
 }
 
-// ── 数値入力ハンドラ ────────────────────────────────────────────────────────
-
-// コンマなし数値を取得
 function priceEstVal(id) {
   const el = document.getElementById(id);
   if (!el) return 0;
@@ -1318,28 +1348,24 @@ function priceEstVal(id) {
 }
 function priceEstStr(id) { return document.getElementById(id)?.value || ''; }
 
-// フォーカス時：コンマを除去して数字だけにする（編集しやすく）
 function priceNumFocus(el) {
   const v = el.value.replace(/,/g, '');
   el.value = v;
-  el.select(); // 全選択で上書きしやすく
+  el.select();
 }
 
-// blur時：単価フィールドのみコンマ付きで再表示
 function priceNumBlur(el, cardId, basePrice) {
   const v = el.value.replace(/,/g, '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
   const n = parseFloat(v);
-  // 単価フィールドかどうか（末尾が u か tqty でないか）
   const isUnit = el.id && !el.id.endsWith('q') || el.id.endsWith('tqty') === false && el.id.match(/u$/);
   if (!isNaN(n) && n > 0 && el.id && el.id.match(/-(ku|hu|su|o1u|o2u)$/)) {
-    el.value = n.toLocaleString(); // コンマ付き
+    el.value = n.toLocaleString();
   } else if (!isNaN(n)) {
     el.value = n === 0 ? '0' : String(n);
   }
   priceCalcEst(cardId, basePrice);
 }
 
-// input時：全角→半角変換のみ（コンマ表示はblurで）
 function priceNumInput(el, cardId, basePrice) {
   let v = el.value;
   v = v.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
@@ -1353,7 +1379,6 @@ function priceCalcEst(cardId, basePrice) {
   const tireUnit = basePrice !== null ? Math.round(basePrice * pct / 100) : 0;
   const tQty = priceEstVal(cardId+'-tqty');
 
-  // タイヤ単価表示を更新
   const tunit = document.getElementById(cardId + '-tunit');
   if (tunit && basePrice !== null) tunit.textContent = '¥' + tireUnit.toLocaleString();
 
@@ -1363,7 +1388,6 @@ function priceCalcEst(cardId, basePrice) {
     { name: '廃タイヤ', unit: priceEstVal(cardId+'-hu'), qty: priceEstVal(cardId+'-hq') },
     { name: '出張',     unit: priceEstVal(cardId+'-su'), qty: priceEstVal(cardId+'-sq') },
   ];
-  // その他1・2：商品名が入力されていれば名前を、なければデフォルト名で表示
   const o1Name = priceEstStr(cardId+'-o1n').trim() || 'その他1';
   const o1Unit = priceEstVal(cardId+'-o1u');
   const o1Qty  = priceEstVal(cardId+'-o1q');
@@ -1391,8 +1415,6 @@ function priceCalcEst(cardId, basePrice) {
   if (tot) tot.textContent = '¥' + total.toLocaleString();
   if (tax) tax.textContent = '¥' + Math.round(total * 1.1).toLocaleString();
 }
-
-
 
 // ─── Tab ─────────────────────────────────────────────────────────────────────
 
@@ -1431,7 +1453,6 @@ function renderEntry() {
   if (fn) fn(el);
 }
 
-// Step 0: サイズ入力
 function renderSize(el) {
   el.innerHTML = `
     <div class="content">
@@ -1485,7 +1506,6 @@ function pickSize(s) {
   if (btn) btn.disabled = false;
 }
 
-// Step 1: カテゴリー選択
 function renderCat(el) {
   const matching = Object.entries(DB_MAP).filter(([k, db]) => db.sizes.includes(state.size));
   if (matching.length === 1) {
@@ -1519,7 +1539,6 @@ function pickCat(k) {
   if (btn) btn.disabled = false;
 }
 
-// Step 2: パターン選択
 function renderPattern(el) {
   const db = DB_MAP[state.cat];
   el.innerHTML = `
@@ -1576,7 +1595,6 @@ function pickPattern(p) {
   });
 }
 
-// Step 3: 本数
 function renderQty(el) {
   el.innerHTML = `
     <div class="content">
@@ -1619,7 +1637,6 @@ function tapNum(v) {
   if (btn) btn.disabled = state.qty === 0;
 }
 
-// Step 4: 区分
 function renderKubun(el) {
   const db = DB_MAP[state.cat];
   const kubunList = db.kubun.filter(k => !['移動入庫','移動出庫'].includes(k));
@@ -1685,7 +1702,6 @@ function kubunNext() {
   else { goStep(6); }
 }
 
-// Step 5: 移動方向
 function renderMoveDir(el) {
   const dirs = [
     {from:'五日市倉庫', to:'志和倉庫', main:true},
@@ -1740,7 +1756,6 @@ function pickMoveDir(from, to) {
   renderEntry();
 }
 
-// Step 6: 倉庫選択
 function renderWarehouse(el) {
   el.innerHTML = `
     <div class="content">
@@ -1768,7 +1783,6 @@ function pickWarehouse(w) {
   if (btn) btn.disabled = false;
 }
 
-// Step 7: 確認
 function renderConfirm(el) {
   const db = DB_MAP[state.cat];
   const tagClass = {
@@ -1808,7 +1822,6 @@ function renderConfirm(el) {
     </div>`;
 }
 
-// Step 8: 完了
 function renderDone(el) {
   const kubunDisplay = state.isMove ? '移動' : state.kubun;
   el.innerHTML = `
@@ -1886,14 +1899,12 @@ async function createRecord(kubun, warehouse) {
     '区分': { select: { name: kubun } },
     '処理タイプ': { select: { name: KUBUN_TO_SHORIYTYPE[kubun] || '出庫' } },
     '年月': { rich_text: [{ text: { content: getNow() } }] },
-
     '作成者': { select: { name: (USER_NAME || '').replace(/ /g, '　') } },
   };
   props[wField] = { select: { name: warehouse } };
   if (state.dest && (state.kubun === '出庫' || state.kubun === '準備')) {
     props['出庫先'] = { rich_text: [{ text: { content: state.dest } }] };
   }
-  // LTL TBノーマルだけメモがselect型、それ以外はrich_text型
   if (state.cat === 'ltl_normal') {
     if (state.memo) props['メモ'] = { select: { name: state.memo } };
     else delete props['メモ'];
@@ -2046,8 +2057,6 @@ function renderPrepEdit(pageId, catKey) {
 
     el.innerHTML = `
       <div class="content" style="padding:0;">
-
-        <!-- A3ヒーロー：左アンバーライン + パターン・サイズ大 -->
         <div style="padding:20px 20px 16px;border-bottom:0.5px solid var(--border);">
           <div style="display:flex;align-items:stretch;gap:14px;">
             <div style="width:4px;border-radius:4px;background:var(--accent);flex-shrink:0;min-height:68px;"></div>
@@ -2062,20 +2071,14 @@ function renderPrepEdit(pageId, catKey) {
             </div>
           </div>
         </div>
-
-        <!-- 編集フィールド -->
         <div style="padding:16px 20px 20px;">
           <div style="font-size:9px;color:var(--muted);letter-spacing:0.1em;margin-bottom:12px;">確認・変更</div>
           <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
-
-            <!-- 出庫先 -->
             <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">
               <div style="font-size:10px;color:var(--muted);letter-spacing:0.06em;margin-bottom:6px;">出庫先</div>
               <input id="prep-dest" type="text" value="${dest}" placeholder="出庫先（任意）"
                 style="background:transparent;border:none;outline:none;color:var(--accent);font-size:16px;font-weight:700;font-family:'Noto Sans JP',sans-serif;width:100%;">
             </div>
-
-            <!-- 本数 -->
             <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;">
               <div style="font-size:10px;color:var(--muted);letter-spacing:0.06em;">本数</div>
               <div style="display:flex;align-items:center;gap:12px;">
@@ -2087,8 +2090,6 @@ function renderPrepEdit(pageId, catKey) {
                   style="background:var(--s3);border:none;border-radius:8px;width:32px;height:32px;color:var(--text);font-size:18px;cursor:pointer;font-weight:700;">＋</button>
               </div>
             </div>
-
-            <!-- 倉庫 -->
             <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;">
               <div style="font-size:10px;color:var(--muted);letter-spacing:0.06em;">倉庫</div>
               <select id="prep-warehouse"
@@ -2096,7 +2097,6 @@ function renderPrepEdit(pageId, catKey) {
                 ${WAREHOUSES.map(w => `<option value="${w}" ${w === warehouse ? 'selected' : ''}>${w}</option>`).join('')}
               </select>
             </div>
-
           </div>
           <div id="prep-error"></div>
           <button class="btn-primary" id="prep-send-btn" onclick="submitPrepToShukko('${pageId}','${catKey}')">
@@ -2135,7 +2135,6 @@ async function submitPrepToShukko(pageId, catKey) {
 
     await notionAPI('PATCH', `/pages/${pageId}`, { properties: props });
 
-    // 完了画面
     const el = document.getElementById('entry-content');
     el.innerHTML = `
       <div class="content" style="text-align:center;padding:40px 20px;">
@@ -2267,7 +2266,6 @@ async function fetchAllRecords(dbId, sizeFilter) {
 function calcStock(records, catKey) {
   const db = DB_MAP[catKey];
   const wField = db.warehouseField;
-  // pattern × warehouse → stock
   const stock = {};
   db.patterns.forEach(p => {
     stock[p] = {};
@@ -2308,7 +2306,6 @@ function renderStockResult(size, catKey, records) {
     ${WAREHOUSES.map(w => `<div style="text-align:center;min-width:48px;"><div style="font-size:10px;color:var(--muted);">${w.replace('倉庫','')}</div></div>`).join('')}
   </div>`;
 
-  // メーカー順にソート: TOYO→BRIDGESTONE→DUNLOP→MICHELIN→PIRELLI
   const MAKER_ORDER = ['TOYO','BRIDGESTONE','DUNLOP','MICHELIN','PIRELLI'];
   const sortedPatterns = [...db.patterns].sort((a, b) => {
     const makerA = getMaker(a);
@@ -2316,14 +2313,12 @@ function renderStockResult(size, catKey, records) {
     const orderA = MAKER_ORDER.indexOf(makerA);
     const orderB = MAKER_ORDER.indexOf(makerB);
     if (orderA !== orderB) return orderA - orderB;
-    // 同メーカー内は在庫あり順
     const sumA = WAREHOUSES.reduce((s, w) => s + (stock[a]?.[w] || 0), 0);
     const sumB = WAREHOUSES.reduce((s, w) => s + (stock[b]?.[w] || 0), 0);
     return sumB - sumA;
   });
 
   sortedPatterns.forEach(p => {
-    const logo = makerLogoImg(p, 13);
     html += `
       <div class="stock-row">
         <div class="stock-pattern" style="display:flex;align-items:center;gap:6px;">
